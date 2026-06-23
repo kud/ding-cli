@@ -63,8 +63,7 @@ var parseTime = (raw) => {
   const fireAt = new Date(Date.now() + ms);
   return { kind: "relative", ms, fireAt };
 };
-var formatDuration = (remainingMs) => {
-  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1e3));
+var formatSeconds = (totalSeconds) => {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor(totalSeconds % 3600 / 60);
   const s = totalSeconds % 60;
@@ -73,27 +72,43 @@ var formatDuration = (remainingMs) => {
   const ss = String(s).padStart(2, "0");
   return h > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`;
 };
+var formatRemaining = (remainingMs) => formatSeconds(Math.max(0, Math.ceil(remainingMs / 1e3)));
 
 // src/countdown.ts
 var BAR_WIDTH = 24;
-var buildProgressBar = (elapsed, total) => {
-  const filled = Math.round(elapsed / total * BAR_WIDTH);
-  const empty = BAR_WIDTH - filled;
-  return "\u2588".repeat(filled) + "\u2591".repeat(empty);
+var TICK_MS = 100;
+var EIGHTH_BLOCKS = ["\u258F", "\u258E", "\u258D", "\u258C", "\u258B", "\u258A", "\u2589", "\u2588"];
+var buildSmoothBar = (elapsed, total) => {
+  if (total <= 0) {
+    return { filled: "\u2588".repeat(BAR_WIDTH), partial: "", empty: "" };
+  }
+  const fraction = Math.min(1, Math.max(0, elapsed / total));
+  const exactFill = fraction * BAR_WIDTH;
+  const fullCells = Math.floor(exactFill);
+  const remainder = exactFill - fullCells;
+  const partialIndex = Math.floor(remainder * 8);
+  const emptyStart = fullCells + (partialIndex > 0 ? 1 : 0);
+  return {
+    filled: "\u2588".repeat(fullCells),
+    partial: partialIndex > 0 ? EIGHTH_BLOCKS[partialIndex - 1] : "",
+    empty: " ".repeat(BAR_WIDTH - emptyStart)
+  };
 };
 var CountdownView = ({ fireAt, totalMs, label, icons }) => {
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
   const [remainingMs, setRemainingMs] = useState(fireAt.getTime() - Date.now());
+  const [tickCount, setTickCount] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => {
       const remaining = fireAt.getTime() - Date.now();
       setRemainingMs(remaining);
+      setTickCount((n) => n + 1);
       if (remaining <= 0) {
         clearInterval(interval);
         exit();
       }
-    }, 1e3);
+    }, TICK_MS);
     return () => clearInterval(interval);
   }, [fireAt, exit]);
   useInput(
@@ -108,17 +123,26 @@ var CountdownView = ({ fireAt, totalMs, label, icons }) => {
   if (remainingMs <= 0) {
     return React.createElement(Text, { color: "green" }, `${icons.done} done`);
   }
-  const elapsed = totalMs - remainingMs;
-  const bar = buildProgressBar(Math.max(0, elapsed), totalMs);
-  const duration = formatDuration(Math.max(0, remainingMs));
+  const safeTotalMs = Math.max(1, totalMs);
+  const elapsed = safeTotalMs - remainingMs;
+  const bar = buildSmoothBar(Math.max(0, elapsed), safeTotalMs);
+  const percentage = Math.round(Math.max(0, elapsed) / safeTotalMs * 100);
+  const timeLabel = formatRemaining(Math.max(0, remainingMs));
+  const frameIndex = tickCount % icons.timerFrames.length;
+  const spinnerFrame = icons.timerFrames[frameIndex];
   return React.createElement(
     Box,
     null,
-    React.createElement(
-      Text,
-      null,
-      `${icons.timer} ${bar}  ${duration} left ${icons.pointer} "${label}"`
-    )
+    React.createElement(Text, null, `${spinnerFrame} `),
+    React.createElement(Text, { dimColor: true }, "\u2595"),
+    React.createElement(Text, { color: "green" }, bar.filled),
+    React.createElement(Text, { color: "green" }, bar.partial),
+    React.createElement(Text, { dimColor: true }, bar.empty),
+    React.createElement(Text, { dimColor: true }, "\u258F"),
+    React.createElement(Text, { dimColor: true }, ` ${percentage}%`),
+    React.createElement(Text, null, "  \xB7  "),
+    React.createElement(Text, { bold: true }, `${timeLabel} left`),
+    React.createElement(Text, null, `  \xB7  "${label}"`)
   );
 };
 var runForegroundCountdown = (fireAt, label, icons, onFire) => {
@@ -159,16 +183,19 @@ var spawnDetached = (args) => {
 // src/icons.ts
 var NERD = {
   timer: "\uF254",
+  timerFrames: ["\uF251", "\uF252", "\uF253"],
   done: "\uF00C",
   pointer: "\uF054"
 };
 var EMOJI = {
   timer: "\u23F3",
+  timerFrames: ["\u23F3", "\u231B"],
   done: "\u2713",
   pointer: "\u25B8"
 };
 var ASCII = {
   timer: "[*]",
+  timerFrames: ["|", "/", "-", "\\"],
   done: "[x]",
   pointer: ">"
 };
@@ -282,7 +309,7 @@ var WhenStep = ({ onNext }) => {
     error ? React2.createElement(Text2, { color: "red" }, error) : resolved ? React2.createElement(
       Text2,
       { dimColor: true },
-      `fires at ${resolved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} \u2014 ${formatDuration(resolved.getTime() - Date.now())} from now`
+      `fires at ${resolved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} \u2014 ${formatRemaining(resolved.getTime() - Date.now())} from now`
     ) : null
   );
 };

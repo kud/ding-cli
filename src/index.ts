@@ -10,7 +10,7 @@ import {
   DEFAULT_SOUND,
   type NotifyOptions,
 } from "./notify.js"
-import { parseTime, formatDuration } from "./parse-time.js"
+import { parseTime } from "./parse-time.js"
 import { runWizard } from "./wizard/wizard.js"
 
 const DEFAULT_TITLE = "ding"

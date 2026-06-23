@@ -4,7 +4,7 @@ import TextInput from "ink-text-input"
 import SelectInput from "ink-select-input"
 
 type SelectItem<V> = { key?: string; label: string; value: V }
-import { parseTime, formatDuration } from "../parse-time.js"
+import { parseTime, formatRemaining } from "../parse-time.js"
 import { resolveIcons, type IconSet } from "../icons.js"
 import { readdir } from "node:fs/promises"
 
@@ -67,7 +67,7 @@ const WhenStep: React.FC<WhenStepProps> = ({ onNext }) => {
         ? React.createElement(
             Text,
             { dimColor: true },
-            `fires at ${resolved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} — ${formatDuration(resolved.getTime() - Date.now())} from now`,
+            `fires at ${resolved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} — ${formatRemaining(resolved.getTime() - Date.now())} from now`,
           )
         : null,
   )

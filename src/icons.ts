@@ -2,24 +2,28 @@ export type IconMode = "nerd" | "emoji" | "ascii"
 
 export type IconSet = {
   timer: string
+  timerFrames: readonly string[]
   done: string
   pointer: string
 }
 
 const NERD: IconSet = {
-  timer: "\uf254",
-  done: "\uf00c",
-  pointer: "\uf054",
+  timer: "",
+  timerFrames: ["", "", ""],
+  done: "",
+  pointer: "",
 }
 
 const EMOJI: IconSet = {
   timer: "⏳",
+  timerFrames: ["⏳", "⌛"],
   done: "✓",
   pointer: "▸",
 }
 
 const ASCII: IconSet = {
   timer: "[*]",
+  timerFrames: ["|", "/", "-", "\\"],
   done: "[x]",
   pointer: ">",
 }

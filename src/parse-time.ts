@@ -69,8 +69,7 @@ export const parseTime = (raw: string): ParsedTime => {
   return { kind: "relative", ms, fireAt }
 }
 
-export const formatDuration = (remainingMs: number): string => {
-  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000))
+const formatSeconds = (totalSeconds: number): string => {
   const h = Math.floor(totalSeconds / 3600)
   const m = Math.floor((totalSeconds % 3600) / 60)
   const s = totalSeconds % 60
@@ -79,3 +78,9 @@ export const formatDuration = (remainingMs: number): string => {
   const ss = String(s).padStart(2, "0")
   return h > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`
 }
+
+export const formatDuration = (elapsedMs: number): string =>
+  formatSeconds(Math.max(0, Math.floor(elapsedMs / 1000)))
+
+export const formatRemaining = (remainingMs: number): string =>
+  formatSeconds(Math.max(0, Math.ceil(remainingMs / 1000)))
