@@ -610,9 +610,9 @@ var sendNotification = (opts) => {
 };
 
 // src/wizard/wizard.tsx
-import React2, { useState as useState2, useEffect as useEffect2 } from "react";
-import { render as render2, Box as Box3, Text as Text3, useInput as useInput2, useApp as useApp2, useStdin as useStdin2 } from "ink";
-import { TextInput, Select } from "@inkjs/ui";
+import React2, { useState as useState2, useEffect as useEffect2, useCallback } from "react";
+import { render as render2, Box as Box3, Text as Text3, useInput as useInput2, useStdin as useStdin2 } from "ink";
+import { TextInput } from "@inkjs/ui";
 import chalk3 from "chalk";
 import { readdir } from "fs/promises";
 
@@ -675,10 +675,7 @@ var soundLabel = (sound, options) => {
   if (sound === false) return "off";
   return options.find((o) => o.value === sound)?.label ?? sound;
 };
-var Wizard = ({
-  onComplete
-}) => {
-  const { exit } = useApp2();
+var Wizard = ({ onComplete, onCancel }) => {
   const { isRawModeSupported } = useStdin2();
   const rawMode = isRawModeSupported === true;
   const [step, setStep] = useState2("when");
@@ -687,7 +684,9 @@ var Wizard = ({
   const [whenError, setWhenError] = useState2(null);
   const [message, setMessage] = useState2("");
   const [notify, setNotify] = useState2(true);
+  const [notifyCursor, setNotifyCursor] = useState2(notify ? 0 : 1);
   const [detach, setDetach] = useState2(false);
+  const [modeCursor, setModeCursor] = useState2(detach ? 1 : 0);
   const [sound, setSound] = useState2(ALARM_PRESETS[0]);
   const [soundCursor, setSoundCursor] = useState2(1);
   const [soundOptions, setSoundOptions] = useState2([
@@ -724,16 +723,17 @@ var Wizard = ({
     });
   }, []);
   const whenReady = fireAt !== null && whenError === null;
-  const cancel = () => {
+  const cancel = useCallback(() => {
     stopPreview();
-    process.stdout.write(chalk3.dim("cancelled\n"));
-    process.exit(0);
-  };
-  const shiftStep = (delta) => {
-    const index = STEP_ORDER.indexOf(step);
-    const next = STEP_ORDER[index + delta];
-    if (next) setStep(next);
-  };
+    onCancel();
+  }, [onCancel]);
+  const shiftStep = useCallback((delta) => {
+    setStep((prev) => {
+      const index = STEP_ORDER.indexOf(prev);
+      const next = STEP_ORDER[index + delta];
+      return next ?? prev;
+    });
+  }, []);
   useInput2(
     (input, key) => {
       if (key.ctrl && input === "c") cancel();
@@ -768,6 +768,28 @@ var Wizard = ({
   );
   useInput2(
     (_input, key) => {
+      if (key.upArrow) setNotifyCursor((c) => Math.max(0, c - 1));
+      if (key.downArrow) setNotifyCursor((c) => Math.min(1, c + 1));
+      if (key.return) {
+        setNotify(notifyCursor === 0);
+        shiftStep(1);
+      }
+    },
+    { isActive: rawMode && step === "notify" }
+  );
+  useInput2(
+    (_input, key) => {
+      if (key.upArrow) setModeCursor((c) => Math.max(0, c - 1));
+      if (key.downArrow) setModeCursor((c) => Math.min(1, c + 1));
+      if (key.return) {
+        setDetach(modeCursor === 1);
+        shiftStep(1);
+      }
+    },
+    { isActive: rawMode && step === "mode" }
+  );
+  useInput2(
+    (_input, key) => {
       if (key.return) {
         if (!whenReady) {
           setStep("when");
@@ -775,12 +797,11 @@ var Wizard = ({
         }
         stopPreview();
         onComplete({ fireAt, message, notify, sound, detach });
-        exit();
       }
     },
     { isActive: rawMode && step === "review" }
   );
-  const handleWhenChange = (value) => {
+  const handleWhenChange = useCallback((value) => {
     setWhenInput(value);
     if (!value) {
       setFireAt(null);
@@ -794,7 +815,7 @@ var Wizard = ({
       setFireAt(null);
       setWhenError(err instanceof Error ? err.message : String(err));
     }
-  };
+  }, []);
   const tabs = STEP_ORDER.map((id) => ({
     value: id,
     label: STEP_LABELS[id],
@@ -810,8 +831,7 @@ var Wizard = ({
             placeholder: "e.g. 5m, 1h30m, 14:30",
             onChange: handleWhenChange,
             onSubmit: () => whenReady && shiftStep(1)
-          },
-          `when-${whenInput === "" ? "empty" : "set"}`
+          }
         ),
         whenReady && fireAt ? /* @__PURE__ */ jsx2(Text3, { color: ACCENT, children: `\u2192 ${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})` }) : null,
         whenError ? /* @__PURE__ */ jsx2(Text3, { color: "red", children: whenError }) : null
@@ -854,35 +874,34 @@ var Wizard = ({
       }) });
     }
     if (step === "notify")
-      return /* @__PURE__ */ jsx2(
-        Select,
-        {
-          options: [
-            { label: "Yes", value: "yes" },
-            { label: "No", value: "no" }
-          ],
-          defaultValue: notify ? "yes" : "no",
-          onChange: (value) => {
-            setNotify(value === "yes");
-            shiftStep(1);
-          }
-        }
-      );
+      return /* @__PURE__ */ jsx2(Box3, { flexDirection: "column", children: ["Yes", "No"].map((label, idx) => {
+        const isCursor = idx === notifyCursor;
+        return /* @__PURE__ */ jsx2(
+          Text3,
+          {
+            color: isCursor ? ACCENT : void 0,
+            dimColor: !isCursor,
+            children: `${isCursor ? "\u25B6" : " "} ${label}`
+          },
+          label
+        );
+      }) });
     if (step === "mode")
-      return /* @__PURE__ */ jsx2(
-        Select,
-        {
-          options: [
-            { label: "Foreground \u2014 watch the countdown", value: "foreground" },
-            { label: "Detach \u2014 run in background", value: "detach" }
-          ],
-          defaultValue: detach ? "detach" : "foreground",
-          onChange: (value) => {
-            setDetach(value === "detach");
-            shiftStep(1);
-          }
-        }
-      );
+      return /* @__PURE__ */ jsx2(Box3, { flexDirection: "column", children: [
+        "Foreground \u2014 watch the countdown",
+        "Detach \u2014 run in background"
+      ].map((label, idx) => {
+        const isCursor = idx === modeCursor;
+        return /* @__PURE__ */ jsx2(
+          Text3,
+          {
+            color: isCursor ? ACCENT : void 0,
+            dimColor: !isCursor,
+            children: `${isCursor ? "\u25B6" : " "} ${label}`
+          },
+          label
+        );
+      }) });
     const rows = [
       [
         "When",
@@ -945,7 +964,6 @@ var Wizard = ({
     /* @__PURE__ */ jsx2(FooterHints, { hints })
   ] });
 };
-var resolveWizard = null;
 var runWizard = () => {
   if (!process.stdin.isTTY) {
     process.stderr.write(
@@ -954,10 +972,19 @@ var runWizard = () => {
     process.exit(1);
   }
   return new Promise((resolve) => {
-    resolveWizard = resolve;
-    render2(
+    const instance = render2(
       React2.createElement(Wizard, {
-        onComplete: (config) => resolveWizard?.(config)
+        onComplete: (config) => {
+          instance.clear();
+          instance.unmount();
+          resolve(config);
+        },
+        onCancel: () => {
+          instance.clear();
+          instance.unmount();
+          process.stdout.write(chalk3.dim("cancelled\n"));
+          process.exit(0);
+        }
       })
     );
   });

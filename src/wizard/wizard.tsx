@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react"
-import { render, Box, Text, useInput, useApp, useStdin } from "ink"
-import { TextInput, Select } from "@inkjs/ui"
+import React, { useState, useEffect, useCallback } from "react"
+import { render, Box, Text, useInput, useStdin } from "ink"
+import { TextInput } from "@inkjs/ui"
 import chalk from "chalk"
 import { readdir } from "node:fs/promises"
 import { parseTime, formatRemaining } from "../parse-time.js"
@@ -61,10 +61,10 @@ const soundLabel = (sound: string | false, options: SoundOption[]): string => {
   return options.find((o) => o.value === sound)?.label ?? sound
 }
 
-const Wizard: React.FC<{ onComplete: (config: WizardConfig) => void }> = ({
-  onComplete,
-}) => {
-  const { exit } = useApp()
+const Wizard: React.FC<{
+  onComplete: (config: WizardConfig) => void
+  onCancel: () => void
+}> = ({ onComplete, onCancel }) => {
   const { isRawModeSupported } = useStdin()
   const rawMode = isRawModeSupported === true
 
@@ -74,7 +74,9 @@ const Wizard: React.FC<{ onComplete: (config: WizardConfig) => void }> = ({
   const [whenError, setWhenError] = useState<string | null>(null)
   const [message, setMessage] = useState("")
   const [notify, setNotify] = useState(true)
+  const [notifyCursor, setNotifyCursor] = useState(notify ? 0 : 1)
   const [detach, setDetach] = useState(false)
+  const [modeCursor, setModeCursor] = useState(detach ? 1 : 0)
   const [sound, setSound] = useState<string | false>(ALARM_PRESETS[0])
   const [soundCursor, setSoundCursor] = useState(1)
   const [soundOptions, setSoundOptions] = useState<SoundOption[]>([
@@ -115,17 +117,18 @@ const Wizard: React.FC<{ onComplete: (config: WizardConfig) => void }> = ({
 
   const whenReady = fireAt !== null && whenError === null
 
-  const cancel = (): void => {
+  const cancel = useCallback((): void => {
     stopPreview()
-    process.stdout.write(chalk.dim("cancelled\n"))
-    process.exit(0)
-  }
+    onCancel()
+  }, [onCancel])
 
-  const shiftStep = (delta: number): void => {
-    const index = STEP_ORDER.indexOf(step)
-    const next = STEP_ORDER[index + delta]
-    if (next) setStep(next)
-  }
+  const shiftStep = useCallback((delta: number): void => {
+    setStep((prev) => {
+      const index = STEP_ORDER.indexOf(prev)
+      const next = STEP_ORDER[index + delta]
+      return next ?? prev
+    })
+  }, [])
 
   useInput(
     (input, key) => {
@@ -163,6 +166,30 @@ const Wizard: React.FC<{ onComplete: (config: WizardConfig) => void }> = ({
 
   useInput(
     (_input, key) => {
+      if (key.upArrow) setNotifyCursor((c) => Math.max(0, c - 1))
+      if (key.downArrow) setNotifyCursor((c) => Math.min(1, c + 1))
+      if (key.return) {
+        setNotify(notifyCursor === 0)
+        shiftStep(1)
+      }
+    },
+    { isActive: rawMode && step === "notify" },
+  )
+
+  useInput(
+    (_input, key) => {
+      if (key.upArrow) setModeCursor((c) => Math.max(0, c - 1))
+      if (key.downArrow) setModeCursor((c) => Math.min(1, c + 1))
+      if (key.return) {
+        setDetach(modeCursor === 1)
+        shiftStep(1)
+      }
+    },
+    { isActive: rawMode && step === "mode" },
+  )
+
+  useInput(
+    (_input, key) => {
       if (key.return) {
         if (!whenReady) {
           setStep("when")
@@ -170,13 +197,12 @@ const Wizard: React.FC<{ onComplete: (config: WizardConfig) => void }> = ({
         }
         stopPreview()
         onComplete({ fireAt: fireAt!, message, notify, sound, detach })
-        exit()
       }
     },
     { isActive: rawMode && step === "review" },
   )
 
-  const handleWhenChange = (value: string): void => {
+  const handleWhenChange = useCallback((value: string): void => {
     setWhenInput(value)
     if (!value) {
       setFireAt(null)
@@ -190,7 +216,7 @@ const Wizard: React.FC<{ onComplete: (config: WizardConfig) => void }> = ({
       setFireAt(null)
       setWhenError(err instanceof Error ? err.message : String(err))
     }
-  }
+  }, [])
 
   const tabs: TabItem<StepId>[] = STEP_ORDER.map((id) => ({
     value: id,
@@ -203,7 +229,6 @@ const Wizard: React.FC<{ onComplete: (config: WizardConfig) => void }> = ({
       return (
         <Box flexDirection="column">
           <TextInput
-            key={`when-${whenInput === "" ? "empty" : "set"}`}
             defaultValue={whenInput}
             placeholder="e.g. 5m, 1h30m, 14:30"
             onChange={handleWhenChange}
@@ -266,32 +291,41 @@ const Wizard: React.FC<{ onComplete: (config: WizardConfig) => void }> = ({
 
     if (step === "notify")
       return (
-        <Select
-          options={[
-            { label: "Yes", value: "yes" },
-            { label: "No", value: "no" },
-          ]}
-          defaultValue={notify ? "yes" : "no"}
-          onChange={(value) => {
-            setNotify(value === "yes")
-            shiftStep(1)
-          }}
-        />
+        <Box flexDirection="column">
+          {["Yes", "No"].map((label, idx) => {
+            const isCursor = idx === notifyCursor
+            return (
+              <Text
+                key={label}
+                color={isCursor ? ACCENT : undefined}
+                dimColor={!isCursor}
+              >
+                {`${isCursor ? "▶" : " "} ${label}`}
+              </Text>
+            )
+          })}
+        </Box>
       )
 
     if (step === "mode")
       return (
-        <Select
-          options={[
-            { label: "Foreground — watch the countdown", value: "foreground" },
-            { label: "Detach — run in background", value: "detach" },
-          ]}
-          defaultValue={detach ? "detach" : "foreground"}
-          onChange={(value) => {
-            setDetach(value === "detach")
-            shiftStep(1)
-          }}
-        />
+        <Box flexDirection="column">
+          {[
+            "Foreground — watch the countdown",
+            "Detach — run in background",
+          ].map((label, idx) => {
+            const isCursor = idx === modeCursor
+            return (
+              <Text
+                key={label}
+                color={isCursor ? ACCENT : undefined}
+                dimColor={!isCursor}
+              >
+                {`${isCursor ? "▶" : " "} ${label}`}
+              </Text>
+            )
+          })}
+        </Box>
       )
 
     const rows: [string, string][] = [
@@ -375,8 +409,6 @@ const Wizard: React.FC<{ onComplete: (config: WizardConfig) => void }> = ({
   )
 }
 
-let resolveWizard: ((config: WizardConfig) => void) | null = null
-
 export const runWizard = (): Promise<WizardConfig> => {
   if (!process.stdin.isTTY) {
     process.stderr.write(
@@ -385,10 +417,19 @@ export const runWizard = (): Promise<WizardConfig> => {
     process.exit(1)
   }
   return new Promise((resolve) => {
-    resolveWizard = resolve
-    render(
+    const instance = render(
       React.createElement(Wizard, {
-        onComplete: (config) => resolveWizard?.(config),
+        onComplete: (config) => {
+          instance.clear()
+          instance.unmount()
+          resolve(config)
+        },
+        onCancel: () => {
+          instance.clear()
+          instance.unmount()
+          process.stdout.write(chalk.dim("cancelled\n"))
+          process.exit(0)
+        },
       }),
     )
   })
