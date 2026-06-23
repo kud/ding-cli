@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
 // src/index.ts
-import chalk2 from "chalk";
+import chalk4 from "chalk";
 import { defineCommand, runMain } from "citty";
 
 // src/countdown.ts
 import React, { useState, useEffect } from "react";
 import { render, Box, Text, useInput, useApp, useStdin } from "ink";
+import BigText from "ink-big-text";
+import Gradient from "ink-gradient";
+import chalk from "chalk";
 
 // src/parse-time.ts
 var RELATIVE_PATTERN = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/;
@@ -78,6 +81,7 @@ var formatRemaining = (remainingMs) => formatSeconds(Math.max(0, Math.ceil(remai
 var BAR_WIDTH = 24;
 var TICK_MS = 100;
 var EIGHTH_BLOCKS = ["\u258F", "\u258E", "\u258D", "\u258C", "\u258B", "\u258A", "\u2589", "\u2588"];
+var DEFAULT_MESSAGE = "\u23F0 Time's up";
 var buildSmoothBar = (elapsed, total) => {
   if (total <= 0) {
     return { filled: "\u2588".repeat(BAR_WIDTH), partial: "", empty: "" };
@@ -90,10 +94,15 @@ var buildSmoothBar = (elapsed, total) => {
   const emptyStart = fullCells + (partialIndex > 0 ? 1 : 0);
   return {
     filled: "\u2588".repeat(fullCells),
-    partial: partialIndex > 0 ? EIGHTH_BLOCKS[partialIndex - 1] : "",
+    partial: partialIndex > 0 ? EIGHTH_BLOCKS[partialIndex - 1] ?? "" : "",
     empty: " ".repeat(BAR_WIDTH - emptyStart)
   };
 };
+var formatFireTime = (date) => date.toLocaleTimeString([], {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit"
+});
 var CountdownView = ({ fireAt, totalMs, label, icons }) => {
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
@@ -114,14 +123,28 @@ var CountdownView = ({ fireAt, totalMs, label, icons }) => {
   useInput(
     (_input, key) => {
       if (key.ctrl && _input === "c") {
-        process.stdout.write("\ncancelled\n");
+        process.stdout.write(chalk.dim("\ncancelled\n"));
         process.exit(0);
       }
     },
     { isActive: isRawModeSupported === true }
   );
   if (remainingMs <= 0) {
-    return React.createElement(Text, { color: "green" }, `${icons.done} done`);
+    const doneLabel = label !== DEFAULT_MESSAGE ? label : "";
+    return React.createElement(
+      Box,
+      {
+        borderStyle: "round",
+        borderColor: "#a3e635",
+        flexDirection: "column",
+        paddingX: 1
+      },
+      React.createElement(
+        Text,
+        { color: "#a3e635", bold: true },
+        `${icons.done}  Time's up${doneLabel ? `  \xB7  ${doneLabel}` : ""}`
+      )
+    );
   }
   const safeTotalMs = Math.max(1, totalMs);
   const elapsed = safeTotalMs - remainingMs;
@@ -129,27 +152,52 @@ var CountdownView = ({ fireAt, totalMs, label, icons }) => {
   const percentage = Math.round(Math.max(0, elapsed) / safeTotalMs * 100);
   const timeLabel = formatRemaining(Math.max(0, remainingMs));
   const frameIndex = tickCount % icons.timerFrames.length;
-  const spinnerFrame = icons.timerFrames[frameIndex];
+  const spinnerFrame = icons.timerFrames[frameIndex] ?? icons.timer;
+  const fireTimeStr = formatFireTime(fireAt);
+  const showLabel = label !== DEFAULT_MESSAGE;
   return React.createElement(
     Box,
-    null,
-    React.createElement(Text, null, `${spinnerFrame} `),
-    React.createElement(Text, { dimColor: true }, "\u2595"),
-    React.createElement(Text, { color: "green" }, bar.filled),
-    React.createElement(Text, { color: "green" }, bar.partial),
-    React.createElement(Text, { dimColor: true }, bar.empty),
-    React.createElement(Text, { dimColor: true }, "\u258F"),
-    React.createElement(Text, { dimColor: true }, ` ${percentage}%`),
-    React.createElement(Text, null, "  \xB7  "),
-    React.createElement(Text, { bold: true }, `${timeLabel} left`),
-    React.createElement(Text, null, `  \xB7  "${label}"`)
+    {
+      borderStyle: "round",
+      borderColor: "#a3e635",
+      flexDirection: "column",
+      paddingX: 1
+    },
+    React.createElement(
+      Box,
+      { flexDirection: "row", gap: 1 },
+      React.createElement(Gradient, {
+        colors: ["#a3e635", "#22c55e"],
+        children: React.createElement(Text, { bold: true }, "ding")
+      }),
+      React.createElement(Text, { dimColor: true }, icons.timer)
+    ),
+    showLabel ? React.createElement(Text, { dimColor: true }, label) : null,
+    React.createElement(
+      Box,
+      { flexDirection: "row" },
+      React.createElement(Text, null, `${spinnerFrame} `),
+      React.createElement(Text, { dimColor: true }, "\u2595"),
+      React.createElement(Text, { color: "#a3e635" }, bar.filled),
+      React.createElement(Text, { color: "#a3e635" }, bar.partial),
+      React.createElement(Text, { dimColor: true }, bar.empty),
+      React.createElement(Text, { dimColor: true }, "\u258F"),
+      React.createElement(Text, { dimColor: true }, ` ${percentage}%`)
+    ),
+    React.createElement(BigText, { text: timeLabel, font: "tiny" }),
+    React.createElement(
+      Box,
+      { flexDirection: "row", justifyContent: "space-between" },
+      React.createElement(Text, { dimColor: true }, `fires ${fireTimeStr}`),
+      React.createElement(Text, { dimColor: true }, "ctrl-c cancel")
+    )
   );
 };
 var runForegroundCountdown = (fireAt, label, icons, onFire) => {
   const totalMs = fireAt.getTime() - Date.now();
   if (!process.stdin.isTTY) {
     process.on("SIGINT", () => {
-      process.stdout.write("\ncancelled\n");
+      process.stdout.write(chalk.dim("\ncancelled\n"));
       process.exit(0);
     });
   }
@@ -158,16 +206,13 @@ var runForegroundCountdown = (fireAt, label, icons, onFire) => {
     { exitOnCtrlC: false }
   );
   waitUntilExit().then(() => {
-    process.stdout.write(`
-${icons.done} done
-`);
     onFire();
   });
 };
 
 // src/detach.ts
 import { spawn } from "child_process";
-import chalk from "chalk";
+import chalk2 from "chalk";
 var spawnDetached = (args) => {
   const child = spawn(process.execPath, [process.argv[1], ...args], {
     detached: true,
@@ -175,7 +220,7 @@ var spawnDetached = (args) => {
   });
   child.unref();
   process.stdout.write(
-    chalk.dim(`detached \u2014 pid ${child.pid}, args: ${args.join(" ")}
+    chalk2.dim(`detached \u2014 pid ${child.pid}, args: ${args.join(" ")}
 `)
   );
 };
@@ -261,259 +306,418 @@ var playSound = (soundPath = DEFAULT_SOUND) => {
 
 // src/wizard/wizard.tsx
 import React2, { useState as useState2, useEffect as useEffect2 } from "react";
-import { render as render2, Box as Box2, Text as Text2, useInput as useInput2, useApp as useApp2 } from "ink";
+import { render as render2, Box as Box2, Text as Text2, useInput as useInput2, useApp as useApp2, useStdin as useStdin2 } from "ink";
 import TextInput from "ink-text-input";
-import SelectInput from "ink-select-input";
+import chalk3 from "chalk";
 import { readdir } from "fs/promises";
-var WhenStep = ({ onNext }) => {
-  const [value, setValue] = useState2("");
-  const [error, setError] = useState2(null);
-  const [resolved, setResolved] = useState2(null);
-  const handleChange = (next) => {
-    setValue(next);
-    if (!next) {
-      setError(null);
-      setResolved(null);
-      return;
-    }
+
+// src/preview-sound.ts
+import { spawn as spawn2 } from "child_process";
+var SOUNDS_DIR = "/System/Library/Sounds";
+var resolveSoundPath = (nameOrPath) => {
+  if (nameOrPath.startsWith("/") || nameOrPath.endsWith(".aiff"))
+    return nameOrPath;
+  return `${SOUNDS_DIR}/${nameOrPath}.aiff`;
+};
+var activePreview = null;
+var previewSound = (nameOrPath) => {
+  if (activePreview !== null) {
     try {
-      const result = parseTime(next);
-      setResolved(result.fireAt);
-      setError(null);
-    } catch (err) {
-      setResolved(null);
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-  const handleSubmit = (submitted) => {
-    if (!submitted) return;
-    try {
-      const result = parseTime(submitted);
-      onNext(result.fireAt);
+      activePreview.kill();
     } catch {
     }
-  };
-  return React2.createElement(
-    Box2,
-    { flexDirection: "column" },
-    React2.createElement(
-      Text2,
-      null,
-      "When should it fire? (e.g. 5m, 1h30m, 14:30)"
-    ),
-    React2.createElement(TextInput, {
-      value,
-      onChange: handleChange,
-      onSubmit: handleSubmit
-    }),
-    error ? React2.createElement(Text2, { color: "red" }, error) : resolved ? React2.createElement(
-      Text2,
-      { dimColor: true },
-      `fires at ${resolved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} \u2014 ${formatRemaining(resolved.getTime() - Date.now())} from now`
-    ) : null
-  );
-};
-var MessageStep = ({ onNext }) => {
-  const [value, setValue] = useState2("");
-  return React2.createElement(
-    Box2,
-    { flexDirection: "column" },
-    React2.createElement(
-      Text2,
-      null,
-      "Message? (optional \u2014 leave empty for default)"
-    ),
-    React2.createElement(TextInput, {
-      value,
-      onChange: setValue,
-      onSubmit: onNext
-    })
-  );
-};
-var NotifyStep = ({ onNext }) => {
-  const items = [
-    { label: "Yes (desktop notification)", value: true },
-    { label: "No", value: false }
-  ];
-  return React2.createElement(
-    Box2,
-    { flexDirection: "column" },
-    React2.createElement(Text2, null, "Send a desktop notification?"),
-    React2.createElement(SelectInput, {
-      items,
-      onSelect: (item) => onNext(item.value)
-    })
-  );
-};
-var SOUNDS_DIR = "/System/Library/Sounds";
-var SoundStep = ({ onNext }) => {
-  const [items, setItems] = useState2([
-    { label: "Off", value: false },
-    { label: "Default (Glass)", value: `${SOUNDS_DIR}/Glass.aiff` }
-  ]);
-  useEffect2(() => {
-    readdir(SOUNDS_DIR).then((files) => {
-      const extras = files.filter((f) => f.endsWith(".aiff") && f !== "Glass.aiff").map((f) => ({
-        label: f.replace(/\.aiff$/, ""),
-        value: `${SOUNDS_DIR}/${f}`
-      }));
-      setItems([
-        { label: "Off", value: false },
-        { label: "Default (Glass)", value: `${SOUNDS_DIR}/Glass.aiff` },
-        ...extras
-      ]);
-    }).catch(() => {
-    });
-  }, []);
-  return React2.createElement(
-    Box2,
-    { flexDirection: "column" },
-    React2.createElement(Text2, null, "Play a sound?"),
-    React2.createElement(SelectInput, {
-      items,
-      onSelect: (item) => onNext(item.value)
-    })
-  );
-};
-var ModeStep = ({ onNext }) => {
-  const items = [
-    { label: "Foreground (watch the countdown)", value: false },
-    { label: "Detach (run in background)", value: true }
-  ];
-  return React2.createElement(
-    Box2,
-    { flexDirection: "column" },
-    React2.createElement(Text2, null, "How should it run?"),
-    React2.createElement(SelectInput, {
-      items,
-      onSelect: (item) => onNext(item.value)
-    })
-  );
-};
-var ReviewScreen = ({
-  config,
-  icons,
-  onConfirm,
-  onCancel
-}) => {
-  useInput2((_input, key) => {
-    if (key.return) onConfirm();
-    if (key.escape) onCancel();
+    activePreview = null;
+  }
+  const child = spawn2("afplay", [resolveSoundPath(nameOrPath)], {
+    stdio: "ignore"
   });
-  const fireTime = config.fireAt.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
+  activePreview = child;
+  child.unref();
+  child.on("exit", () => {
+    if (activePreview === child) activePreview = null;
   });
-  const soundLabel = config.sound === false ? "off" : config.sound === "/System/Library/Sounds/Glass.aiff" ? "Glass (default)" : config.sound;
-  return React2.createElement(
-    Box2,
-    { flexDirection: "column", gap: 1 },
-    React2.createElement(Text2, { bold: true }, "Review"),
-    React2.createElement(
-      Box2,
-      { flexDirection: "column" },
-      React2.createElement(Text2, null, `  when     ${fireTime}`),
-      React2.createElement(
-        Text2,
-        null,
-        `  message  ${config.message || "(default)"}`
-      ),
-      React2.createElement(
-        Text2,
-        null,
-        `  notify   ${config.notify ? "yes" : "no"}`
-      ),
-      React2.createElement(Text2, null, `  sound    ${soundLabel}`),
-      React2.createElement(
-        Text2,
-        null,
-        `  mode     ${config.detach ? "detach" : "foreground"}`
-      )
-    ),
-    React2.createElement(
-      Text2,
-      { dimColor: true },
-      `Press Enter to start ${icons.pointer} Esc to cancel`
-    )
-  );
 };
-var Wizard = ({ icons, onComplete }) => {
+
+// src/wizard/wizard.tsx
+var SOUNDS_DIR2 = "/System/Library/Sounds";
+var STEP_NAMES = ["When", "Message", "Notify", "Sound", "Mode"];
+var formatFireTime2 = (date) => date.toLocaleTimeString([], {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit"
+});
+var formatInTime = (date) => {
+  const ms = date.getTime() - Date.now();
+  return formatRemaining(Math.max(0, ms));
+};
+var getSoundLabel = (sound, soundOptions) => {
+  if (sound === false) return "off";
+  const opt = soundOptions.find((o) => o.value === sound);
+  return opt ? opt.label : sound;
+};
+var FOOTER_HINTS = {
+  0: "esc back \xB7 \u21B5 next",
+  1: "esc back \xB7 \u21B5 next  (optional \u2014 leave empty to skip)",
+  2: "y yes \xB7 n no \xB7 \u2191\u2193 choose \xB7 \u21B5 confirm \xB7 esc back",
+  3: "\u2191\u2193 browse \xB7 space preview \xB7 \u21B5 confirm \xB7 esc back",
+  4: "\u2191\u2193 choose \xB7 \u21B5 confirm \xB7 esc back",
+  5: "\u21B5 start \xB7 esc back"
+};
+var Wizard = ({ onComplete }) => {
   const { exit } = useApp2();
+  const { isRawModeSupported } = useStdin2();
+  const rawMode = isRawModeSupported === true;
   const [step, setStep] = useState2(0);
   const [fireAt, setFireAt] = useState2(null);
+  const [fireAtInput, setFireAtInput] = useState2("");
+  const [whenError, setWhenError] = useState2(null);
   const [message, setMessage] = useState2("");
   const [notify, setNotify] = useState2(true);
+  const [notifyCursor, setNotifyCursor] = useState2(0);
   const [sound, setSound] = useState2(
     "/System/Library/Sounds/Glass.aiff"
   );
+  const [soundCursor, setSoundCursor] = useState2(1);
+  const [soundOptions, setSoundOptions] = useState2([
+    { label: "Off", value: false },
+    { label: "Glass", value: "/System/Library/Sounds/Glass.aiff" }
+  ]);
+  const [previewing, setPreviewing] = useState2(null);
   const [detach, setDetach] = useState2(false);
-  const handleConfirm = () => {
-    onComplete({ fireAt, message, notify, sound, detach });
-    exit();
-  };
-  const handleCancel = () => {
-    process.stdout.write("cancelled\n");
-    process.exit(0);
-  };
-  const stepHeader = step < 5 ? React2.createElement(Text2, { dimColor: true }, `step ${step + 1}/5`) : null;
-  const stepContent = (() => {
-    if (step === 0)
-      return React2.createElement(WhenStep, {
-        onNext: (date) => {
-          setFireAt(date);
-          setStep(1);
+  const [modeCursor, setModeCursor] = useState2(0);
+  useEffect2(() => {
+    readdir(SOUNDS_DIR2).then((files) => {
+      const aiffs = files.filter((f) => f.endsWith(".aiff")).map((f) => f.replace(/\.aiff$/, "")).sort();
+      const opts = [
+        { label: "Off", value: false },
+        ...aiffs.map((name) => ({
+          label: name,
+          value: `/System/Library/Sounds/${name}.aiff`
+        }))
+      ];
+      setSoundOptions(opts);
+      const glassIdx = opts.findIndex((o) => o.label === "Glass");
+      if (glassIdx > 0) setSoundCursor(glassIdx);
+    }).catch(() => {
+    });
+  }, []);
+  useInput2(
+    (input, key) => {
+      if (key.ctrl && input === "c") {
+        process.stdout.write(chalk3.dim("cancelled\n"));
+        process.exit(0);
+      }
+      if (key.escape) {
+        if (step === 0) {
+          process.stdout.write(chalk3.dim("cancelled\n"));
+          process.exit(0);
         }
-      });
-    if (step === 1)
-      return React2.createElement(MessageStep, {
-        onNext: (msg) => {
-          setMessage(msg);
-          setStep(2);
-        }
-      });
-    if (step === 2)
-      return React2.createElement(NotifyStep, {
-        onNext: (n) => {
-          setNotify(n);
+        setStep((s) => s - 1);
+      }
+    },
+    { isActive: rawMode }
+  );
+  useInput2(
+    (input, key) => {
+      if (step === 2) {
+        if (key.upArrow || key.downArrow) setNotifyCursor((c) => 1 - c);
+        if (key.return) {
+          setNotify(notifyCursor === 0);
           setStep(3);
         }
-      });
-    if (step === 3)
-      return React2.createElement(SoundStep, {
-        onNext: (s) => {
-          setSound(s);
-          setStep(4);
+        if (input === "y" || input === "Y") {
+          setNotify(true);
+          setStep(3);
         }
-      });
-    if (step === 4)
-      return React2.createElement(ModeStep, {
-        onNext: (d) => {
-          setDetach(d);
+        if (input === "n" || input === "N") {
+          setNotify(false);
+          setStep(3);
+        }
+      }
+      if (step === 3) {
+        if (key.upArrow) setSoundCursor((c) => Math.max(0, c - 1));
+        if (key.downArrow)
+          setSoundCursor((c) => Math.min(soundOptions.length - 1, c + 1));
+        if (input === " " && soundCursor > 0) {
+          const opt = soundOptions[soundCursor];
+          if (opt && opt.value !== false) {
+            previewSound(opt.label);
+            setPreviewing(opt.label);
+            setTimeout(() => setPreviewing(null), 3e3);
+          }
+        }
+        if (key.return) {
+          const opt = soundOptions[soundCursor];
+          if (opt) {
+            setSound(opt.value);
+            setStep(4);
+          }
+        }
+      }
+      if (step === 4) {
+        if (key.upArrow || key.downArrow) setModeCursor((c) => 1 - c);
+        if (key.return) {
+          setDetach(modeCursor === 1);
           setStep(5);
         }
-      });
-    return React2.createElement(ReviewScreen, {
-      config: { fireAt, message, notify, sound, detach },
-      icons,
-      onConfirm: handleConfirm,
-      onCancel: handleCancel
-    });
-  })();
+      }
+      if (step === 5) {
+        if (key.return) {
+          onComplete({ fireAt, message, notify, sound, detach });
+          exit();
+        }
+      }
+    },
+    { isActive: rawMode && step >= 2 }
+  );
+  const handleWhenChange = (val) => {
+    setFireAtInput(val);
+    if (!val) {
+      setWhenError(null);
+      return;
+    }
+    try {
+      const result = parseTime(val);
+      setFireAt(result.fireAt);
+      setWhenError(null);
+    } catch (err) {
+      setFireAt(null);
+      setWhenError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const handleWhenSubmit = (val) => {
+    if (!val) return;
+    try {
+      const result = parseTime(val);
+      setFireAt(result.fireAt);
+      setWhenError(null);
+      setStep(1);
+    } catch (err) {
+      setWhenError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const handleMessageSubmit = (val) => {
+    setMessage(val);
+    setStep(2);
+  };
+  const renderStepSummary = (s) => {
+    if (s === 0 && fireAt)
+      return `\u2192 ${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})`;
+    if (s === 1) return message ? `\u2192 "${message}"` : "\u2192 (none)";
+    if (s === 2) return `\u2192 ${notify ? "yes" : "no"}`;
+    if (s === 3) return `\u2192 ${getSoundLabel(sound, soundOptions)}`;
+    if (s === 4) return `\u2192 ${detach ? "detach" : "foreground"}`;
+    return "";
+  };
+  const renderActiveContent = () => {
+    if (step === 0) {
+      return React2.createElement(
+        Box2,
+        { flexDirection: "column", paddingLeft: 2 },
+        React2.createElement(TextInput, {
+          value: fireAtInput,
+          onChange: handleWhenChange,
+          onSubmit: handleWhenSubmit,
+          placeholder: "e.g. 5m, 1h30m, 14:30"
+        }),
+        fireAt && !whenError ? React2.createElement(
+          Text2,
+          { color: "#a3e635" },
+          `\u2192 ${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})`
+        ) : null,
+        whenError ? React2.createElement(Text2, { color: "red" }, whenError) : null
+      );
+    }
+    if (step === 1) {
+      return React2.createElement(
+        Box2,
+        { flexDirection: "column", paddingLeft: 2 },
+        React2.createElement(TextInput, {
+          value: message,
+          onChange: setMessage,
+          onSubmit: handleMessageSubmit,
+          placeholder: "(optional)"
+        })
+      );
+    }
+    if (step === 2) {
+      return React2.createElement(
+        Box2,
+        { flexDirection: "column", paddingLeft: 2 },
+        React2.createElement(
+          Text2,
+          { color: notifyCursor === 0 ? "#a3e635" : void 0 },
+          `${notifyCursor === 0 ? "\u25B6" : " "} Yes`
+        ),
+        React2.createElement(
+          Text2,
+          { color: notifyCursor === 1 ? "#a3e635" : void 0 },
+          `${notifyCursor === 1 ? "\u25B6" : " "} No`
+        )
+      );
+    }
+    if (step === 3) {
+      const start = Math.max(0, soundCursor - 3);
+      const end = Math.min(soundOptions.length, start + 8);
+      const visible = soundOptions.slice(start, end);
+      return React2.createElement(
+        Box2,
+        { flexDirection: "column", paddingLeft: 2 },
+        ...visible.map((opt, i) => {
+          const idx = start + i;
+          const isCursor = idx === soundCursor;
+          return React2.createElement(
+            Text2,
+            {
+              key: opt.label,
+              color: isCursor ? "#a3e635" : void 0,
+              dimColor: !isCursor
+            },
+            `${isCursor ? "\u25B6" : " "} ${opt.label}`
+          );
+        }),
+        previewing ? React2.createElement(
+          Text2,
+          { color: "#a3e635", dimColor: true },
+          `\u266A previewing ${previewing}\u2026`
+        ) : null
+      );
+    }
+    if (step === 4) {
+      const modeLabels = [
+        "Foreground (watch the countdown)",
+        "Detach (run in background)"
+      ];
+      return React2.createElement(
+        Box2,
+        { flexDirection: "column", paddingLeft: 2 },
+        ...modeLabels.map(
+          (label, i) => React2.createElement(
+            Text2,
+            {
+              key: label,
+              color: modeCursor === i ? "#a3e635" : void 0,
+              dimColor: modeCursor !== i
+            },
+            `${modeCursor === i ? "\u25B6" : " "} ${label}`
+          )
+        )
+      );
+    }
+    if (step === 5) {
+      const reviewRows = [
+        [
+          "When",
+          fireAt ? `\u2192 ${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})` : ""
+        ],
+        ["Message", message ? `\u2192 "${message}"` : "\u2192 (none)"],
+        ["Notify", `\u2192 ${notify ? "yes" : "no"}`],
+        ["Sound", `\u2192 ${getSoundLabel(sound, soundOptions)}`],
+        ["Mode", `\u2192 ${detach ? "detach" : "foreground"}`]
+      ];
+      return React2.createElement(
+        Box2,
+        { flexDirection: "column", paddingLeft: 2, gap: 1 },
+        React2.createElement(
+          Box2,
+          { flexDirection: "column" },
+          ...reviewRows.map(
+            ([k, v]) => React2.createElement(
+              Box2,
+              { key: k, flexDirection: "row", gap: 1 },
+              React2.createElement(
+                Text2,
+                { dimColor: true },
+                (k ?? "").padEnd(9)
+              ),
+              React2.createElement(Text2, null, v)
+            )
+          )
+        )
+      );
+    }
+    return null;
+  };
+  const renderRail = () => {
+    const rows = [];
+    for (let s = 0; s < 5; s++) {
+      const name = STEP_NAMES[s] ?? "";
+      if (s < step) {
+        rows.push(
+          React2.createElement(
+            Text2,
+            { key: `step-${s}`, dimColor: true },
+            `  \u2713 ${name}  ${renderStepSummary(s)}`
+          )
+        );
+      } else if (s === step) {
+        rows.push(
+          React2.createElement(
+            Text2,
+            { key: `step-${s}`, color: "#a3e635", bold: true },
+            `\u25B6 ${name}`
+          )
+        );
+        rows.push(
+          React2.createElement(
+            Box2,
+            { key: `step-${s}-content` },
+            renderActiveContent()
+          )
+        );
+      } else {
+        rows.push(
+          React2.createElement(
+            Text2,
+            { key: `step-${s}`, dimColor: true },
+            `  \u25CB ${name}`
+          )
+        );
+      }
+    }
+    if (step === 5) {
+      rows.push(
+        React2.createElement(
+          Text2,
+          { key: "review-header", color: "#a3e635", bold: true },
+          "\u25B6 Review"
+        )
+      );
+      rows.push(
+        React2.createElement(
+          Box2,
+          { key: "review-content" },
+          renderActiveContent()
+        )
+      );
+    }
+    return rows;
+  };
+  const hint = FOOTER_HINTS[step] ?? "";
   return React2.createElement(
     Box2,
-    { flexDirection: "column", gap: 1 },
-    stepHeader,
-    stepContent
+    {
+      borderStyle: "round",
+      borderColor: "#a3e635",
+      flexDirection: "column",
+      paddingX: 1
+    },
+    ...renderRail(),
+    React2.createElement(Text2, { dimColor: true }, hint)
   );
 };
 var resolveWizard = null;
-var runWizard = (icons) => {
+var runWizard = () => {
+  if (!process.stdin.isTTY) {
+    process.stderr.write(
+      "error: interactive wizard requires a TTY \u2014 pipe a time argument instead, e.g. ding 5m\n"
+    );
+    process.exit(1);
+  }
   return new Promise((resolve) => {
     resolveWizard = resolve;
     render2(
       React2.createElement(Wizard, {
-        icons,
         onComplete: (config) => {
           resolveWizard?.(config);
         }
@@ -524,9 +728,9 @@ var runWizard = (icons) => {
 
 // src/index.ts
 var DEFAULT_TITLE = "ding";
-var DEFAULT_MESSAGE = "\u23F0 Time's up";
+var DEFAULT_MESSAGE2 = "\u23F0 Time's up";
 var URL_PATTERN = /^https?:\/\/.+/;
-var formatFireTime = (fireAt) => fireAt.toLocaleTimeString([], {
+var formatFireTime3 = (fireAt) => fireAt.toLocaleTimeString([], {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit"
@@ -565,7 +769,7 @@ var run = async (config) => {
   const icons = resolveIcons(iconsFlag);
   if (detach) {
     const forwardArgs = [rawTime];
-    if (message !== DEFAULT_MESSAGE) forwardArgs.push(message);
+    if (message !== DEFAULT_MESSAGE2) forwardArgs.push(message);
     if (title !== DEFAULT_TITLE) forwardArgs.push("--title", title);
     if (sound === false) forwardArgs.push("--no-sound");
     if (!notify) forwardArgs.push("--no-notify");
@@ -577,14 +781,13 @@ var run = async (config) => {
       forwardArgs.push("--notify-sound", notifySound);
     if (iconsFlag !== void 0) forwardArgs.push("--icons", iconsFlag);
     process.stdout.write(
-      `${chalk2.cyan("ding")} fires at ${chalk2.bold(formatFireTime(fireAt))}
-`
+      `${chalk4.hex("#a3e635")("ding")} \u2192 ${chalk4.bold(formatFireTime3(fireAt))}${chalk4.dim(" (detached)\n")}`
     );
     spawnDetached(forwardArgs);
     return;
   }
   process.stdout.write(
-    `${chalk2.cyan("ding")} fires at ${chalk2.bold(formatFireTime(fireAt))} \u2014 ${chalk2.dim(message)}
+    `${chalk4.hex("#a3e635")("ding")} \u2192 ${chalk4.bold(formatFireTime3(fireAt))}${message !== DEFAULT_MESSAGE2 ? chalk4.dim(` \xB7 ${message}`) : ""}
 `
   );
   await new Promise((resolve) => {
@@ -676,12 +879,11 @@ var main = defineCommand({
       process.exit(1);
     }
     if (isInteractive) {
-      const icons = resolveIcons(iconsFlag);
-      const wizardConfig = await runWizard(icons);
+      const wizardConfig = await runWizard();
       await run({
         rawTime: formatAsTimeString(wizardConfig.fireAt),
         fireAt: wizardConfig.fireAt,
-        message: wizardConfig.message || DEFAULT_MESSAGE,
+        message: wizardConfig.message || DEFAULT_MESSAGE2,
         title: DEFAULT_TITLE,
         sound: wizardConfig.sound,
         notify: wizardConfig.notify,
@@ -690,7 +892,7 @@ var main = defineCommand({
       });
       return;
     }
-    const message = args.message ?? DEFAULT_MESSAGE;
+    const message = args.message ?? DEFAULT_MESSAGE2;
     const title = args.title ?? DEFAULT_TITLE;
     const detach = args.detach;
     const noSound = args["no-sound"];
@@ -705,7 +907,7 @@ var main = defineCommand({
         return parseTime(rawTime);
       } catch (err) {
         process.stderr.write(
-          `${chalk2.red("error:")} ${err instanceof Error ? err.message : String(err)}
+          `${chalk4.red("error:")} ${err instanceof Error ? err.message : String(err)}
 `
         );
         process.exit(1);

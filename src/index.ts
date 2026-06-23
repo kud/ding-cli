@@ -99,14 +99,14 @@ const run = async (config: RunConfig): Promise<void> => {
       forwardArgs.push("--notify-sound", notifySound)
     if (iconsFlag !== undefined) forwardArgs.push("--icons", iconsFlag)
     process.stdout.write(
-      `${chalk.cyan("ding")} fires at ${chalk.bold(formatFireTime(fireAt))}\n`,
+      `${chalk.hex("#a3e635")("ding")} → ${chalk.bold(formatFireTime(fireAt))}${chalk.dim(" (detached)\n")}`,
     )
     spawnDetached(forwardArgs)
     return
   }
 
   process.stdout.write(
-    `${chalk.cyan("ding")} fires at ${chalk.bold(formatFireTime(fireAt))} — ${chalk.dim(message)}\n`,
+    `${chalk.hex("#a3e635")("ding")} → ${chalk.bold(formatFireTime(fireAt))}${message !== DEFAULT_MESSAGE ? chalk.dim(` · ${message}`) : ""}\n`,
   )
 
   await new Promise<void>((resolve) => {
@@ -206,8 +206,7 @@ const main = defineCommand({
     }
 
     if (isInteractive) {
-      const icons = resolveIcons(iconsFlag)
-      const wizardConfig = await runWizard(icons)
+      const wizardConfig = await runWizard()
       await run({
         rawTime: formatAsTimeString(wizardConfig.fireAt),
         fireAt: wizardConfig.fireAt,

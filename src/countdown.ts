@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react"
 import { render, Box, Text, useInput, useApp, useStdin } from "ink"
+import BigText from "ink-big-text"
+import Gradient from "ink-gradient"
+import chalk from "chalk"
 import { formatRemaining } from "./parse-time.js"
 import type { IconSet } from "./icons.js"
 
@@ -7,6 +10,8 @@ const BAR_WIDTH = 24
 const TICK_MS = 100
 
 const EIGHTH_BLOCKS = ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"] as const
+
+const DEFAULT_MESSAGE = "⏰ Time's up"
 
 const buildSmoothBar = (
   elapsed: number,
@@ -24,10 +29,17 @@ const buildSmoothBar = (
 
   return {
     filled: "█".repeat(fullCells),
-    partial: partialIndex > 0 ? EIGHTH_BLOCKS[partialIndex - 1] : "",
+    partial: partialIndex > 0 ? (EIGHTH_BLOCKS[partialIndex - 1] ?? "") : "",
     empty: " ".repeat(BAR_WIDTH - emptyStart),
   }
 }
+
+const formatFireTime = (date: Date): string =>
+  date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
 
 const CountdownView: React.FC<{
   fireAt: Date
@@ -56,7 +68,7 @@ const CountdownView: React.FC<{
   useInput(
     (_input, key) => {
       if (key.ctrl && _input === "c") {
-        process.stdout.write("\ncancelled\n")
+        process.stdout.write(chalk.dim("\ncancelled\n"))
         process.exit(0)
       }
     },
@@ -64,7 +76,21 @@ const CountdownView: React.FC<{
   )
 
   if (remainingMs <= 0) {
-    return React.createElement(Text, { color: "green" }, `${icons.done} done`)
+    const doneLabel = label !== DEFAULT_MESSAGE ? label : ""
+    return React.createElement(
+      Box,
+      {
+        borderStyle: "round",
+        borderColor: "#a3e635",
+        flexDirection: "column",
+        paddingX: 1,
+      },
+      React.createElement(
+        Text,
+        { color: "#a3e635", bold: true },
+        `${icons.done}  Time's up${doneLabel ? `  ·  ${doneLabel}` : ""}`,
+      ),
+    )
   }
 
   const safeTotalMs = Math.max(1, totalMs)
@@ -73,21 +99,46 @@ const CountdownView: React.FC<{
   const percentage = Math.round((Math.max(0, elapsed) / safeTotalMs) * 100)
   const timeLabel = formatRemaining(Math.max(0, remainingMs))
   const frameIndex = tickCount % icons.timerFrames.length
-  const spinnerFrame = icons.timerFrames[frameIndex]
+  const spinnerFrame = icons.timerFrames[frameIndex] ?? icons.timer
+  const fireTimeStr = formatFireTime(fireAt)
+  const showLabel = label !== DEFAULT_MESSAGE
 
   return React.createElement(
     Box,
-    null,
-    React.createElement(Text, null, `${spinnerFrame} `),
-    React.createElement(Text, { dimColor: true }, "▕"),
-    React.createElement(Text, { color: "green" }, bar.filled),
-    React.createElement(Text, { color: "green" }, bar.partial),
-    React.createElement(Text, { dimColor: true }, bar.empty),
-    React.createElement(Text, { dimColor: true }, "▏"),
-    React.createElement(Text, { dimColor: true }, ` ${percentage}%`),
-    React.createElement(Text, null, "  ·  "),
-    React.createElement(Text, { bold: true }, `${timeLabel} left`),
-    React.createElement(Text, null, `  ·  "${label}"`),
+    {
+      borderStyle: "round",
+      borderColor: "#a3e635",
+      flexDirection: "column",
+      paddingX: 1,
+    },
+    React.createElement(
+      Box,
+      { flexDirection: "row", gap: 1 },
+      React.createElement(Gradient, {
+        colors: ["#a3e635", "#22c55e"],
+        children: React.createElement(Text, { bold: true }, "ding"),
+      }),
+      React.createElement(Text, { dimColor: true }, icons.timer),
+    ),
+    showLabel ? React.createElement(Text, { dimColor: true }, label) : null,
+    React.createElement(
+      Box,
+      { flexDirection: "row" },
+      React.createElement(Text, null, `${spinnerFrame} `),
+      React.createElement(Text, { dimColor: true }, "▕"),
+      React.createElement(Text, { color: "#a3e635" }, bar.filled),
+      React.createElement(Text, { color: "#a3e635" }, bar.partial),
+      React.createElement(Text, { dimColor: true }, bar.empty),
+      React.createElement(Text, { dimColor: true }, "▏"),
+      React.createElement(Text, { dimColor: true }, ` ${percentage}%`),
+    ),
+    React.createElement(BigText, { text: timeLabel, font: "tiny" }),
+    React.createElement(
+      Box,
+      { flexDirection: "row", justifyContent: "space-between" },
+      React.createElement(Text, { dimColor: true }, `fires ${fireTimeStr}`),
+      React.createElement(Text, { dimColor: true }, "ctrl-c cancel"),
+    ),
   )
 }
 
@@ -101,7 +152,7 @@ export const runForegroundCountdown = (
 
   if (!process.stdin.isTTY) {
     process.on("SIGINT", () => {
-      process.stdout.write("\ncancelled\n")
+      process.stdout.write(chalk.dim("\ncancelled\n"))
       process.exit(0)
     })
   }
@@ -111,7 +162,6 @@ export const runForegroundCountdown = (
     { exitOnCtrlC: false },
   )
   waitUntilExit().then(() => {
-    process.stdout.write(`\n${icons.done} done\n`)
     onFire()
   })
 }

@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from "react"
-import { render, Box, Text, useInput, useApp } from "ink"
+import { render, Box, Text, useInput, useApp, useStdin } from "ink"
 import TextInput from "ink-text-input"
-import SelectInput from "ink-select-input"
-
-type SelectItem<V> = { key?: string; label: string; value: V }
+import chalk from "chalk"
 import { parseTime, formatRemaining } from "../parse-time.js"
-import { resolveIcons, type IconSet } from "../icons.js"
 import { readdir } from "node:fs/promises"
+import { previewSound } from "../preview-sound.js"
 
 export type WizardConfig = {
   fireAt: Date
@@ -16,319 +14,440 @@ export type WizardConfig = {
   detach: boolean
 }
 
-type WhenStepProps = { onNext: (fireAt: Date) => void }
-
-const WhenStep: React.FC<WhenStepProps> = ({ onNext }) => {
-  const [value, setValue] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [resolved, setResolved] = useState<Date | null>(null)
-
-  const handleChange = (next: string): void => {
-    setValue(next)
-    if (!next) {
-      setError(null)
-      setResolved(null)
-      return
-    }
-    try {
-      const result = parseTime(next)
-      setResolved(result.fireAt)
-      setError(null)
-    } catch (err) {
-      setResolved(null)
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const handleSubmit = (submitted: string): void => {
-    if (!submitted) return
-    try {
-      const result = parseTime(submitted)
-      onNext(result.fireAt)
-    } catch {}
-  }
-
-  return React.createElement(
-    Box,
-    { flexDirection: "column" },
-    React.createElement(
-      Text,
-      null,
-      "When should it fire? (e.g. 5m, 1h30m, 14:30)",
-    ),
-    React.createElement(TextInput, {
-      value,
-      onChange: handleChange,
-      onSubmit: handleSubmit,
-    }),
-    error
-      ? React.createElement(Text, { color: "red" }, error)
-      : resolved
-        ? React.createElement(
-            Text,
-            { dimColor: true },
-            `fires at ${resolved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} — ${formatRemaining(resolved.getTime() - Date.now())} from now`,
-          )
-        : null,
-  )
-}
-
-type MessageStepProps = { onNext: (message: string) => void }
-
-const MessageStep: React.FC<MessageStepProps> = ({ onNext }) => {
-  const [value, setValue] = useState("")
-
-  return React.createElement(
-    Box,
-    { flexDirection: "column" },
-    React.createElement(
-      Text,
-      null,
-      "Message? (optional — leave empty for default)",
-    ),
-    React.createElement(TextInput, {
-      value,
-      onChange: setValue,
-      onSubmit: onNext,
-    }),
-  )
-}
-
-type NotifyStepProps = { onNext: (notify: boolean) => void }
-
-const NotifyStep: React.FC<NotifyStepProps> = ({ onNext }) => {
-  const items = [
-    { label: "Yes (desktop notification)", value: true },
-    { label: "No", value: false },
-  ]
-
-  return React.createElement(
-    Box,
-    { flexDirection: "column" },
-    React.createElement(Text, null, "Send a desktop notification?"),
-    React.createElement(SelectInput, {
-      items,
-      onSelect: (item: SelectItem<unknown>) => onNext(item.value as boolean),
-    }),
-  )
-}
-
 const SOUNDS_DIR = "/System/Library/Sounds"
 
-type SoundStepProps = { onNext: (sound: string | false) => void }
+const STEP_NAMES = ["When", "Message", "Notify", "Sound", "Mode"] as const
 
-const SoundStep: React.FC<SoundStepProps> = ({ onNext }) => {
-  const [items, setItems] = useState<
-    { label: string; value: string | false }[]
-  >([
-    { label: "Off", value: false },
-    { label: "Default (Glass)", value: `${SOUNDS_DIR}/Glass.aiff` },
-  ])
-
-  useEffect(() => {
-    readdir(SOUNDS_DIR)
-      .then((files) => {
-        const extras = files
-          .filter((f) => f.endsWith(".aiff") && f !== "Glass.aiff")
-          .map((f) => ({
-            label: f.replace(/\.aiff$/, ""),
-            value: `${SOUNDS_DIR}/${f}`,
-          }))
-        setItems([
-          { label: "Off", value: false },
-          { label: "Default (Glass)", value: `${SOUNDS_DIR}/Glass.aiff` },
-          ...extras,
-        ])
-      })
-      .catch(() => {})
-  }, [])
-
-  return React.createElement(
-    Box,
-    { flexDirection: "column" },
-    React.createElement(Text, null, "Play a sound?"),
-    React.createElement(SelectInput, {
-      items,
-      onSelect: (item: SelectItem<unknown>) =>
-        onNext(item.value as string | false),
-    }),
-  )
-}
-
-type ModeStepProps = { onNext: (detach: boolean) => void }
-
-const ModeStep: React.FC<ModeStepProps> = ({ onNext }) => {
-  const items = [
-    { label: "Foreground (watch the countdown)", value: false },
-    { label: "Detach (run in background)", value: true },
-  ]
-
-  return React.createElement(
-    Box,
-    { flexDirection: "column" },
-    React.createElement(Text, null, "How should it run?"),
-    React.createElement(SelectInput, {
-      items,
-      onSelect: (item: SelectItem<unknown>) => onNext(item.value as boolean),
-    }),
-  )
-}
-
-type ReviewScreenProps = {
-  config: WizardConfig
-  icons: IconSet
-  onConfirm: () => void
-  onCancel: () => void
-}
-
-const ReviewScreen: React.FC<ReviewScreenProps> = ({
-  config,
-  icons,
-  onConfirm,
-  onCancel,
-}) => {
-  useInput((_input, key) => {
-    if (key.return) onConfirm()
-    if (key.escape) onCancel()
-  })
-
-  const fireTime = config.fireAt.toLocaleTimeString([], {
+const formatFireTime = (date: Date): string =>
+  date.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
   })
 
-  const soundLabel =
-    config.sound === false
-      ? "off"
-      : config.sound === "/System/Library/Sounds/Glass.aiff"
-        ? "Glass (default)"
-        : config.sound
-
-  return React.createElement(
-    Box,
-    { flexDirection: "column", gap: 1 },
-    React.createElement(Text, { bold: true }, "Review"),
-    React.createElement(
-      Box,
-      { flexDirection: "column" },
-      React.createElement(Text, null, `  when     ${fireTime}`),
-      React.createElement(
-        Text,
-        null,
-        `  message  ${config.message || "(default)"}`,
-      ),
-      React.createElement(
-        Text,
-        null,
-        `  notify   ${config.notify ? "yes" : "no"}`,
-      ),
-      React.createElement(Text, null, `  sound    ${soundLabel}`),
-      React.createElement(
-        Text,
-        null,
-        `  mode     ${config.detach ? "detach" : "foreground"}`,
-      ),
-    ),
-    React.createElement(
-      Text,
-      { dimColor: true },
-      `Press Enter to start ${icons.pointer} Esc to cancel`,
-    ),
-  )
+const formatInTime = (date: Date): string => {
+  const ms = date.getTime() - Date.now()
+  return formatRemaining(Math.max(0, ms))
 }
 
-type Step = 0 | 1 | 2 | 3 | 4 | 5
+const getSoundLabel = (
+  sound: string | false,
+  soundOptions: Array<{ label: string; value: string | false }>,
+): string => {
+  if (sound === false) return "off"
+  const opt = soundOptions.find((o) => o.value === sound)
+  return opt ? opt.label : sound
+}
+
+const FOOTER_HINTS: Record<number, string> = {
+  0: "esc back · ↵ next",
+  1: "esc back · ↵ next  (optional — leave empty to skip)",
+  2: "y yes · n no · ↑↓ choose · ↵ confirm · esc back",
+  3: "↑↓ browse · space preview · ↵ confirm · esc back",
+  4: "↑↓ choose · ↵ confirm · esc back",
+  5: "↵ start · esc back",
+}
 
 const Wizard: React.FC<{
-  icons: IconSet
   onComplete: (config: WizardConfig) => void
-}> = ({ icons, onComplete }) => {
+}> = ({ onComplete }) => {
   const { exit } = useApp()
-  const [step, setStep] = useState<Step>(0)
+  const { isRawModeSupported } = useStdin()
+  const rawMode = isRawModeSupported === true
+
+  const [step, setStep] = useState(0)
   const [fireAt, setFireAt] = useState<Date | null>(null)
+  const [fireAtInput, setFireAtInput] = useState("")
+  const [whenError, setWhenError] = useState<string | null>(null)
   const [message, setMessage] = useState("")
   const [notify, setNotify] = useState(true)
+  const [notifyCursor, setNotifyCursor] = useState(0)
   const [sound, setSound] = useState<string | false>(
     "/System/Library/Sounds/Glass.aiff",
   )
+  const [soundCursor, setSoundCursor] = useState(1)
+  const [soundOptions, setSoundOptions] = useState<
+    Array<{ label: string; value: string | false }>
+  >([
+    { label: "Off", value: false },
+    { label: "Glass", value: "/System/Library/Sounds/Glass.aiff" },
+  ])
+  const [previewing, setPreviewing] = useState<string | null>(null)
   const [detach, setDetach] = useState(false)
+  const [modeCursor, setModeCursor] = useState(0)
 
-  const handleConfirm = (): void => {
-    onComplete({ fireAt: fireAt!, message, notify, sound, detach })
-    exit()
-  }
-
-  const handleCancel = (): void => {
-    process.stdout.write("cancelled\n")
-    process.exit(0)
-  }
-
-  const stepHeader =
-    step < 5
-      ? React.createElement(Text, { dimColor: true }, `step ${step + 1}/5`)
-      : null
-
-  const stepContent = (() => {
-    if (step === 0)
-      return React.createElement(WhenStep, {
-        onNext: (date) => {
-          setFireAt(date)
-          setStep(1)
-        },
+  useEffect(() => {
+    readdir(SOUNDS_DIR)
+      .then((files) => {
+        const aiffs = files
+          .filter((f) => f.endsWith(".aiff"))
+          .map((f) => f.replace(/\.aiff$/, ""))
+          .sort()
+        const opts: Array<{ label: string; value: string | false }> = [
+          { label: "Off", value: false },
+          ...aiffs.map((name) => ({
+            label: name,
+            value: `/System/Library/Sounds/${name}.aiff` as string | false,
+          })),
+        ]
+        setSoundOptions(opts)
+        const glassIdx = opts.findIndex((o) => o.label === "Glass")
+        if (glassIdx > 0) setSoundCursor(glassIdx)
       })
-    if (step === 1)
-      return React.createElement(MessageStep, {
-        onNext: (msg) => {
-          setMessage(msg)
-          setStep(2)
-        },
-      })
-    if (step === 2)
-      return React.createElement(NotifyStep, {
-        onNext: (n) => {
-          setNotify(n)
+      .catch(() => {})
+  }, [])
+
+  // Always-on: ctrl-c and escape
+  useInput(
+    (input, key) => {
+      if (key.ctrl && input === "c") {
+        process.stdout.write(chalk.dim("cancelled\n"))
+        process.exit(0)
+      }
+      if (key.escape) {
+        if (step === 0) {
+          process.stdout.write(chalk.dim("cancelled\n"))
+          process.exit(0)
+        }
+        setStep((s) => s - 1)
+      }
+    },
+    { isActive: rawMode },
+  )
+
+  // Step-specific: only active for non-text-input steps
+  useInput(
+    (input, key) => {
+      if (step === 2) {
+        if (key.upArrow || key.downArrow) setNotifyCursor((c) => 1 - c)
+        if (key.return) {
+          setNotify(notifyCursor === 0)
           setStep(3)
-        },
-      })
-    if (step === 3)
-      return React.createElement(SoundStep, {
-        onNext: (s) => {
-          setSound(s)
-          setStep(4)
-        },
-      })
-    if (step === 4)
-      return React.createElement(ModeStep, {
-        onNext: (d) => {
-          setDetach(d)
+        }
+        if (input === "y" || input === "Y") {
+          setNotify(true)
+          setStep(3)
+        }
+        if (input === "n" || input === "N") {
+          setNotify(false)
+          setStep(3)
+        }
+      }
+
+      if (step === 3) {
+        if (key.upArrow) setSoundCursor((c) => Math.max(0, c - 1))
+        if (key.downArrow)
+          setSoundCursor((c) => Math.min(soundOptions.length - 1, c + 1))
+        if (input === " " && soundCursor > 0) {
+          const opt = soundOptions[soundCursor]
+          if (opt && opt.value !== false) {
+            previewSound(opt.label)
+            setPreviewing(opt.label)
+            setTimeout(() => setPreviewing(null), 3000)
+          }
+        }
+        if (key.return) {
+          const opt = soundOptions[soundCursor]
+          if (opt) {
+            setSound(opt.value)
+            setStep(4)
+          }
+        }
+      }
+
+      if (step === 4) {
+        if (key.upArrow || key.downArrow) setModeCursor((c) => 1 - c)
+        if (key.return) {
+          setDetach(modeCursor === 1)
           setStep(5)
-        },
-      })
-    return React.createElement(ReviewScreen, {
-      config: { fireAt: fireAt!, message, notify, sound, detach },
-      icons,
-      onConfirm: handleConfirm,
-      onCancel: handleCancel,
-    })
-  })()
+        }
+      }
+
+      if (step === 5) {
+        if (key.return) {
+          onComplete({ fireAt: fireAt!, message, notify, sound, detach })
+          exit()
+        }
+      }
+    },
+    { isActive: rawMode && step >= 2 },
+  )
+
+  const handleWhenChange = (val: string): void => {
+    setFireAtInput(val)
+    if (!val) {
+      setWhenError(null)
+      return
+    }
+    try {
+      const result = parseTime(val)
+      setFireAt(result.fireAt)
+      setWhenError(null)
+    } catch (err) {
+      setFireAt(null)
+      setWhenError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleWhenSubmit = (val: string): void => {
+    if (!val) return
+    try {
+      const result = parseTime(val)
+      setFireAt(result.fireAt)
+      setWhenError(null)
+      setStep(1)
+    } catch (err) {
+      setWhenError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleMessageSubmit = (val: string): void => {
+    setMessage(val)
+    setStep(2)
+  }
+
+  const renderStepSummary = (s: number): string => {
+    if (s === 0 && fireAt)
+      return `→ ${formatFireTime(fireAt)}  (in ${formatInTime(fireAt)})`
+    if (s === 1) return message ? `→ "${message}"` : "→ (none)"
+    if (s === 2) return `→ ${notify ? "yes" : "no"}`
+    if (s === 3) return `→ ${getSoundLabel(sound, soundOptions)}`
+    if (s === 4) return `→ ${detach ? "detach" : "foreground"}`
+    return ""
+  }
+
+  const renderActiveContent = (): React.ReactNode => {
+    if (step === 0) {
+      return React.createElement(
+        Box,
+        { flexDirection: "column", paddingLeft: 2 },
+        React.createElement(TextInput, {
+          value: fireAtInput,
+          onChange: handleWhenChange,
+          onSubmit: handleWhenSubmit,
+          placeholder: "e.g. 5m, 1h30m, 14:30",
+        }),
+        fireAt && !whenError
+          ? React.createElement(
+              Text,
+              { color: "#a3e635" },
+              `→ ${formatFireTime(fireAt)}  (in ${formatInTime(fireAt)})`,
+            )
+          : null,
+        whenError
+          ? React.createElement(Text, { color: "red" }, whenError)
+          : null,
+      )
+    }
+
+    if (step === 1) {
+      return React.createElement(
+        Box,
+        { flexDirection: "column", paddingLeft: 2 },
+        React.createElement(TextInput, {
+          value: message,
+          onChange: setMessage,
+          onSubmit: handleMessageSubmit,
+          placeholder: "(optional)",
+        }),
+      )
+    }
+
+    if (step === 2) {
+      return React.createElement(
+        Box,
+        { flexDirection: "column", paddingLeft: 2 },
+        React.createElement(
+          Text,
+          { color: notifyCursor === 0 ? "#a3e635" : undefined },
+          `${notifyCursor === 0 ? "▶" : " "} Yes`,
+        ),
+        React.createElement(
+          Text,
+          { color: notifyCursor === 1 ? "#a3e635" : undefined },
+          `${notifyCursor === 1 ? "▶" : " "} No`,
+        ),
+      )
+    }
+
+    if (step === 3) {
+      const start = Math.max(0, soundCursor - 3)
+      const end = Math.min(soundOptions.length, start + 8)
+      const visible = soundOptions.slice(start, end)
+
+      return React.createElement(
+        Box,
+        { flexDirection: "column", paddingLeft: 2 },
+        ...visible.map((opt, i) => {
+          const idx = start + i
+          const isCursor = idx === soundCursor
+          return React.createElement(
+            Text,
+            {
+              key: opt.label,
+              color: isCursor ? "#a3e635" : undefined,
+              dimColor: !isCursor,
+            },
+            `${isCursor ? "▶" : " "} ${opt.label}`,
+          )
+        }),
+        previewing
+          ? React.createElement(
+              Text,
+              { color: "#a3e635", dimColor: true },
+              `♪ previewing ${previewing}…`,
+            )
+          : null,
+      )
+    }
+
+    if (step === 4) {
+      const modeLabels = [
+        "Foreground (watch the countdown)",
+        "Detach (run in background)",
+      ]
+      return React.createElement(
+        Box,
+        { flexDirection: "column", paddingLeft: 2 },
+        ...modeLabels.map((label, i) =>
+          React.createElement(
+            Text,
+            {
+              key: label,
+              color: modeCursor === i ? "#a3e635" : undefined,
+              dimColor: modeCursor !== i,
+            },
+            `${modeCursor === i ? "▶" : " "} ${label}`,
+          ),
+        ),
+      )
+    }
+
+    if (step === 5) {
+      const reviewRows = [
+        [
+          "When",
+          fireAt
+            ? `→ ${formatFireTime(fireAt)}  (in ${formatInTime(fireAt)})`
+            : "",
+        ],
+        ["Message", message ? `→ "${message}"` : "→ (none)"],
+        ["Notify", `→ ${notify ? "yes" : "no"}`],
+        ["Sound", `→ ${getSoundLabel(sound, soundOptions)}`],
+        ["Mode", `→ ${detach ? "detach" : "foreground"}`],
+      ]
+      return React.createElement(
+        Box,
+        { flexDirection: "column", paddingLeft: 2, gap: 1 },
+        React.createElement(
+          Box,
+          { flexDirection: "column" },
+          ...reviewRows.map(([k, v]) =>
+            React.createElement(
+              Box,
+              { key: k, flexDirection: "row", gap: 1 },
+              React.createElement(
+                Text,
+                { dimColor: true },
+                (k ?? "").padEnd(9),
+              ),
+              React.createElement(Text, null, v),
+            ),
+          ),
+        ),
+      )
+    }
+
+    return null
+  }
+
+  const renderRail = (): React.ReactNode[] => {
+    const rows: React.ReactNode[] = []
+
+    for (let s = 0; s < 5; s++) {
+      const name = STEP_NAMES[s] ?? ""
+      if (s < step) {
+        rows.push(
+          React.createElement(
+            Text,
+            { key: `step-${s}`, dimColor: true },
+            `  ✓ ${name}  ${renderStepSummary(s)}`,
+          ),
+        )
+      } else if (s === step) {
+        rows.push(
+          React.createElement(
+            Text,
+            { key: `step-${s}`, color: "#a3e635", bold: true },
+            `▶ ${name}`,
+          ),
+        )
+        rows.push(
+          React.createElement(
+            Box,
+            { key: `step-${s}-content` },
+            renderActiveContent(),
+          ),
+        )
+      } else {
+        rows.push(
+          React.createElement(
+            Text,
+            { key: `step-${s}`, dimColor: true },
+            `  ○ ${name}`,
+          ),
+        )
+      }
+    }
+
+    if (step === 5) {
+      rows.push(
+        React.createElement(
+          Text,
+          { key: "review-header", color: "#a3e635", bold: true },
+          "▶ Review",
+        ),
+      )
+      rows.push(
+        React.createElement(
+          Box,
+          { key: "review-content" },
+          renderActiveContent(),
+        ),
+      )
+    }
+
+    return rows
+  }
+
+  const hint = FOOTER_HINTS[step] ?? ""
 
   return React.createElement(
     Box,
-    { flexDirection: "column", gap: 1 },
-    stepHeader,
-    stepContent,
+    {
+      borderStyle: "round",
+      borderColor: "#a3e635",
+      flexDirection: "column",
+      paddingX: 1,
+    },
+    ...renderRail(),
+    React.createElement(Text, { dimColor: true }, hint),
   )
 }
 
 let resolveWizard: ((config: WizardConfig) => void) | null = null
 
-export const runWizard = (icons: IconSet): Promise<WizardConfig> => {
+export const runWizard = (): Promise<WizardConfig> => {
+  if (!process.stdin.isTTY) {
+    process.stderr.write(
+      "error: interactive wizard requires a TTY — pipe a time argument instead, e.g. ding 5m\n",
+    )
+    process.exit(1)
+  }
   return new Promise((resolve) => {
     resolveWizard = resolve
     render(
       React.createElement(Wizard, {
-        icons,
         onComplete: (config) => {
           resolveWizard?.(config)
         },
