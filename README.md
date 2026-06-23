@@ -79,6 +79,12 @@ ding 20m "meeting" --sound ~/Downloads/alarm.aiff
 # Custom notification title
 ding 10m "deploy done" --title "CI"
 
+# Open a URL when the notification is clicked
+ding 5h "quota is back" --open https://claude.ai --subtitle "Anthropic"
+
+# Use the notification banner's built-in sound (separate from the afplay alarm)
+ding 30m "stand-up" --notify-sound Glass
+
 # Detach — return the prompt immediately, fires in background
 ding 5h "quota is back" --detach
 ding 9am "morning check" -d
@@ -86,15 +92,37 @@ ding 9am "morning check" -d
 
 ### Options
 
-| Flag             | Alias | Description                                                  |
-| ---------------- | ----- | ------------------------------------------------------------ |
-| `--detach`       | `-d`  | Background the process; prints fire time and PID, then exits |
-| `--sound <path>` | `-s`  | Custom audio file path (played via `afplay`)                 |
-| `--no-sound`     |       | Disable sound entirely                                       |
-| `--no-notify`    |       | Disable desktop notification                                 |
-| `--title <text>` |       | Notification title (default: `ding`)                         |
-| `--help`         | `-h`  | Show help                                                    |
-| `--version`      | `-V`  | Show version                                                 |
+| Flag                    | Alias | Description                                                                     |
+| ----------------------- | ----- | ------------------------------------------------------------------------------- |
+| `--detach`              | `-d`  | Background the process; prints fire time and PID, then exits                    |
+| `--sound <path>`        | `-s`  | Custom audio file played via `afplay` when the alarm fires (default: Glass)     |
+| `--no-sound`            |       | Disable alarm sound entirely                                                    |
+| `--no-notify`           |       | Disable desktop notification                                                    |
+| `--title <text>`        |       | Notification title (default: `ding`)                                            |
+| `--subtitle <text>`     |       | Notification subtitle                                                           |
+| `--icon <path>`         |       | Absolute path to a custom notification icon image                               |
+| `--open <url>`          |       | URL opened when the notification is clicked (e.g. `https://claude.ai`)          |
+| `--notify-sound <name>` |       | Notification banner sound name (e.g. `Glass`, `Ping`) — distinct from `--sound` |
+| `--icons <mode>`        |       | Icon set: `nerd` (default), `emoji`, or `ascii`. Also via `DING_ICONS` env var  |
+| `--help`                | `-h`  | Show help                                                                       |
+| `--version`             | `-V`  | Show version                                                                    |
+
+### Icon sets
+
+The countdown and done line use icons from the active icon set. Three modes are available:
+
+| Mode    | How to activate                       | Requires                          |
+| ------- | ------------------------------------- | --------------------------------- |
+| `nerd`  | default (no flag needed)              | a Nerd Font-patched terminal font |
+| `emoji` | `--icons emoji` or `DING_ICONS=emoji` | any modern terminal               |
+| `ascii` | `--icons ascii` or `DING_ICONS=ascii` | nothing                           |
+
+`--icons` takes precedence over `DING_ICONS`. The default `nerd` mode uses Private Use Area glyphs from the Nerd Fonts patch set (nf-fa-hourglass `U+F254`, nf-fa-check `U+F00C`, nf-fa-chevron-right `U+F054`). If your terminal font is not Nerd Font-patched, use `--icons emoji` or set `DING_ICONS=emoji` in your shell profile.
+
+```sh
+ding 5m "test" --icons emoji
+DING_ICONS=ascii ding 5m "test"
+```
 
 ### Foreground mode (default)
 

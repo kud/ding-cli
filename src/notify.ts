@@ -1,38 +1,31 @@
-import { execSync, spawnSync } from "node:child_process"
+import nodeNotifier from "node-notifier"
+import { spawnSync } from "node:child_process"
 
-const DEFAULT_SOUND = "/System/Library/Sounds/Glass.aiff"
+export const DEFAULT_SOUND = "/System/Library/Sounds/Glass.aiff"
 
-const terminalNotifierAvailable = (): boolean => {
-  try {
-    execSync("which terminal-notifier", { stdio: "ignore" })
-    return true
-  } catch {
-    return false
+export type NotifyOptions = {
+  title: string
+  message: string
+  subtitle?: string
+  icon?: string
+  open?: string
+  notifySound?: string
+}
+
+export const sendNotification = (opts: NotifyOptions): void => {
+  const payload: Record<string, unknown> = {
+    title: opts.title,
+    message: opts.message,
   }
-}
-
-const notifyViaTerminalNotifier = (title: string, message: string): void => {
-  spawnSync("terminal-notifier", ["-title", title, "-message", message], {
-    stdio: "ignore",
-  })
-}
-
-const notifyViaOsascript = (title: string, message: string): void => {
-  const script = `display notification "${message.replace(/"/g, '\\"')}" with title "${title.replace(/"/g, '\\"')}"`
-  spawnSync("osascript", ["-e", script], { stdio: "ignore" })
-}
-
-export const sendNotification = (title: string, message: string): void => {
-  if (terminalNotifierAvailable()) {
-    notifyViaTerminalNotifier(title, message)
-    return
+  if (opts.subtitle !== undefined) payload.subtitle = opts.subtitle
+  if (opts.icon !== undefined) {
+    payload.icon = opts.icon
+    payload.contentImage = opts.icon
   }
+  if (opts.open !== undefined) payload.open = opts.open
+  if (opts.notifySound !== undefined) payload.sound = opts.notifySound
 
-  process.stderr.write(
-    "warning: terminal-notifier not found — falling back to osascript\n" +
-      "         install it with: brew install terminal-notifier\n",
-  )
-  notifyViaOsascript(title, message)
+  nodeNotifier.notify(payload)
 }
 
 export const playSound = (soundPath: string = DEFAULT_SOUND): void => {
