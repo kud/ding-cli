@@ -682,6 +682,7 @@ var Wizard = ({ onComplete, onCancel }) => {
   const [fireAt, setFireAt] = useState2(null);
   const [whenInput, setWhenInput] = useState2("");
   const [whenError, setWhenError] = useState2(null);
+  const [whenMs, setWhenMs] = useState2(null);
   const [message, setMessage] = useState2("");
   const [notify, setNotify] = useState2(true);
   const [notifyCursor, setNotifyCursor] = useState2(notify ? 0 : 1);
@@ -795,8 +796,13 @@ var Wizard = ({ onComplete, onCancel }) => {
           setStep("when");
           return;
         }
-        stopPreview();
-        onComplete({ fireAt, message, notify, sound, detach });
+        try {
+          const parsed = parseTime(whenInput);
+          stopPreview();
+          onComplete({ fireAt: parsed.fireAt, message, notify, sound, detach });
+        } catch {
+          setStep("when");
+        }
       }
     },
     { isActive: rawMode && step === "review" }
@@ -805,14 +811,18 @@ var Wizard = ({ onComplete, onCancel }) => {
     setWhenInput(value);
     if (!value) {
       setFireAt(null);
+      setWhenMs(null);
       setWhenError(null);
       return;
     }
     try {
-      setFireAt(parseTime(value).fireAt);
+      const parsed = parseTime(value);
+      setFireAt(parsed.fireAt);
+      setWhenMs(parsed.kind === "relative" ? parsed.ms : null);
       setWhenError(null);
     } catch (err) {
       setFireAt(null);
+      setWhenMs(null);
       setWhenError(err instanceof Error ? err.message : String(err));
     }
   }, []);
@@ -833,7 +843,7 @@ var Wizard = ({ onComplete, onCancel }) => {
             onSubmit: () => whenReady && shiftStep(1)
           }
         ),
-        whenReady && fireAt ? /* @__PURE__ */ jsx2(Text3, { color: ACCENT, children: `\u2192 ${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})` }) : null,
+        whenReady && fireAt ? /* @__PURE__ */ jsx2(Text3, { color: ACCENT, children: whenMs !== null ? `in ${formatRemaining(whenMs)}  (from start)` : `\u2192 ${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})` }) : null,
         whenError ? /* @__PURE__ */ jsx2(Text3, { color: "red", children: whenError }) : null
       ] });
     if (step === "message")
@@ -905,7 +915,7 @@ var Wizard = ({ onComplete, onCancel }) => {
     const rows = [
       [
         "When",
-        whenReady && fireAt ? `${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})` : "not set"
+        whenReady && fireAt ? whenMs !== null ? `in ${formatRemaining(whenMs)}` : `${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})` : "not set"
       ],
       ["Message", message || "(none)"],
       ["Notify", notify ? "yes" : "no"],

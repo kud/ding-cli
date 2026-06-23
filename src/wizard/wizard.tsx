@@ -72,6 +72,7 @@ const Wizard: React.FC<{
   const [fireAt, setFireAt] = useState<Date | null>(null)
   const [whenInput, setWhenInput] = useState("")
   const [whenError, setWhenError] = useState<string | null>(null)
+  const [whenMs, setWhenMs] = useState<number | null>(null)
   const [message, setMessage] = useState("")
   const [notify, setNotify] = useState(true)
   const [notifyCursor, setNotifyCursor] = useState(notify ? 0 : 1)
@@ -195,8 +196,13 @@ const Wizard: React.FC<{
           setStep("when")
           return
         }
-        stopPreview()
-        onComplete({ fireAt: fireAt!, message, notify, sound, detach })
+        try {
+          const parsed = parseTime(whenInput)
+          stopPreview()
+          onComplete({ fireAt: parsed.fireAt, message, notify, sound, detach })
+        } catch {
+          setStep("when")
+        }
       }
     },
     { isActive: rawMode && step === "review" },
@@ -206,14 +212,18 @@ const Wizard: React.FC<{
     setWhenInput(value)
     if (!value) {
       setFireAt(null)
+      setWhenMs(null)
       setWhenError(null)
       return
     }
     try {
-      setFireAt(parseTime(value).fireAt)
+      const parsed = parseTime(value)
+      setFireAt(parsed.fireAt)
+      setWhenMs(parsed.kind === "relative" ? parsed.ms : null)
       setWhenError(null)
     } catch (err) {
       setFireAt(null)
+      setWhenMs(null)
       setWhenError(err instanceof Error ? err.message : String(err))
     }
   }, [])
@@ -236,7 +246,9 @@ const Wizard: React.FC<{
           />
           {whenReady && fireAt ? (
             <Text color={ACCENT}>
-              {`→ ${formatFireTime(fireAt)}  (in ${formatInTime(fireAt)})`}
+              {whenMs !== null
+                ? `in ${formatRemaining(whenMs)}  (from start)`
+                : `→ ${formatFireTime(fireAt)}  (in ${formatInTime(fireAt)})`}
             </Text>
           ) : null}
           {whenError ? <Text color="red">{whenError}</Text> : null}
@@ -332,7 +344,9 @@ const Wizard: React.FC<{
       [
         "When",
         whenReady && fireAt
-          ? `${formatFireTime(fireAt)}  (in ${formatInTime(fireAt)})`
+          ? whenMs !== null
+            ? `in ${formatRemaining(whenMs)}`
+            : `${formatFireTime(fireAt)}  (in ${formatInTime(fireAt)})`
           : "not set",
       ],
       ["Message", message || "(none)"],
