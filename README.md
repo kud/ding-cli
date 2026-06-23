@@ -1,36 +1,58 @@
-# ding
+<div align="center">
 
-A tiny macOS alarm/timer CLI. Set a relative or absolute time, get a desktop notification and a sound when it fires.
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white)
+![npm](https://img.shields.io/npm/v/%40kud%2Fding?style=flat-square&color=CB3837)
+![MIT](https://img.shields.io/badge/licence-MIT-22C55E?style=flat-square)
 
-Originally built to remember when Claude's usage quota resets — run `ding 5h "quota is back"` and forget about it.
+**A tiny macOS alarm/timer CLI — set a relative or absolute time, get a notification and a sound when it fires**
+
+[Features](#-features) • [Quick Start](#-quick-start) • [CLI Reference](#-cli-reference) • [Development](#-development)
+
+</div>
+
+Originally built to remember when Claude's usage quota resets — `ding 5h "quota is back"` and forget about it.
 
 ---
 
-## Install
+## 🌟 Features
+
+- ⏱ **Relative and absolute times** — `5h`, `90m`, `1h30m`, `30s`, `14:30`, `2:30pm`, `9am`; absolute times already past today roll to tomorrow
+- 🔔 **Desktop notifications** — zero-dependency setup; ships with `node-notifier` which vendors its own `terminal-notifier`, no `brew install` required
+- 🔊 **Built-in alarm presets** — six synthesised sounds (`beep`, `digital`, `radar`, `bell`, `siren`, `chime`), macOS Clock ringtones (e.g. `Radial`, `Daybreak`, `Arpeggio`), macOS system sounds, or any audio file via `afplay`
+- 🧙 **Interactive wizard** — `ding` with no arguments launches a tabbed TUI (When · Message · Sound · Notify · Mode · Review); press Space on the Sound step to preview before choosing
+- 🔗 **Click-to-open notifications** — `--open https://claude.ai` makes the notification banner a shortcut to any URL
+- 🖥 **Foreground and detached modes** — live countdown with progress bar by default; `--detach` backgrounds the process and returns the prompt immediately
+
+---
+
+## 🚀 Quick Start
+
+Install globally:
 
 ```sh
 npm install -g @kud/ding
 ```
 
-Or link locally during development:
+Or run without installing:
 
 ```sh
-npm link
+npx @kud/ding 5h "quota is back"
 ```
 
-### Optional dependency
+Set a timer and watch the countdown:
 
-For richer notifications, install `terminal-notifier`:
-
-```sh
-brew install terminal-notifier
+```console
+$ ding 90m "tea is ready"
+ding → 16:37:22 · tea is ready
+01:29:58 ▸ tea is ready
 ```
 
-Without it, `ding` falls back to `osascript` — notifications still work, just without actions or sound attachment.
+When it fires, the terminal rings (loops the alarm) until you press any key to dismiss, and a desktop notification pops up.
 
 ---
 
-## Usage
+## 📖 CLI Reference
 
 ```
 ding <time> [message] [options]
@@ -38,129 +60,171 @@ ding <time> [message] [options]
 
 ### Time formats
 
-**Relative duration** — fires after a delay from now:
+| Format              | Example  | Meaning                                    |
+| ------------------- | -------- | ------------------------------------------ |
+| Relative — hours    | `5h`     | 5 hours from now                           |
+| Relative — minutes  | `90m`    | 90 minutes from now                        |
+| Relative — seconds  | `30s`    | 30 seconds from now                        |
+| Relative — compound | `1h30m`  | 1 hour 30 minutes from now                 |
+| Bare number         | `45`     | 45 minutes from now                        |
+| 24-hour clock       | `14:30`  | fires at 14:30 today (or tomorrow if past) |
+| 12-hour clock       | `2:30pm` | fires at 14:30                             |
+| Hour only           | `9am`    | fires at 09:00                             |
 
-```sh
-ding 5h                  # 5 hours
-ding 90m                 # 90 minutes
-ding 30s                 # 30 seconds
-ding 1h30m               # 1 hour 30 minutes
-ding 2h15m30s            # compound
-ding 45                  # bare number = minutes
-```
+### Options
 
-**Absolute clock time** — fires at a specific time today (or tomorrow if already past):
-
-```sh
-ding 14:30               # 24-hour
-ding 2:30pm              # 12-hour with am/pm
-ding 9am                 # hour only
-ding 14:30:00            # with seconds
-```
+| Flag                    | Alias | Description                                                                                                                                                                                                                                |
+| ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--detach`              | `-d`  | Background the process; prints fire time then returns the prompt                                                                                                                                                                           |
+| `--sound <value>`       | `-s`  | Alarm preset (`beep` `digital` `radar` `bell` `siren` `chime`), macOS Clock ringtone name (e.g. `Daybreak`; quote names with spaces like `"Milky Way"`), macOS system sound name (e.g. `Glass`), or path to an audio file. Default: `bell` |
+| `--no-sound`            |       | Disable alarm sound entirely                                                                                                                                                                                                               |
+| `--no-notify`           |       | Disable desktop notification                                                                                                                                                                                                               |
+| `--title <text>`        |       | Notification title (default: `ding`)                                                                                                                                                                                                       |
+| `--subtitle <text>`     |       | Notification subtitle                                                                                                                                                                                                                      |
+| `--icon <path>`         |       | Absolute path to a custom notification icon image                                                                                                                                                                                          |
+| `--open <url>`          |       | URL to open when the notification banner is clicked                                                                                                                                                                                        |
+| `--notify-sound <name>` |       | Notification banner sound (e.g. `Glass`, `Ping`) — distinct from `--sound`, which plays via `afplay`                                                                                                                                       |
+| `--icons <mode>`        |       | Icon set: `nerd` (default, requires Nerd Font), `emoji`, or `ascii`. Also set via `DING_ICONS` env var                                                                                                                                     |
+| `-i` / `--interactive`  |       | Force-launch the interactive wizard                                                                                                                                                                                                        |
+| `--help`                | `-h`  | Show help                                                                                                                                                                                                                                  |
+| `--version`             | `-V`  | Show version                                                                                                                                                                                                                               |
 
 ### Examples
 
 ```sh
-# Basic timer — live countdown in terminal
-ding 5h "quota is back"
+# Relative timer with a message
+ding 90m "tea is ready"
 
 # Absolute time
 ding 14:30 "stand-up"
 
-# Silent notification only
-ding 30m "check the oven" --no-sound
+# Fires at 9 am — rolls to tomorrow if 9 am has already passed
+ding 9am
 
-# Sound only, no notification
-ding 1h --no-notify
-
-# Custom sound file
-ding 20m "meeting" --sound ~/Downloads/alarm.aiff
-
-# Custom notification title
-ding 10m "deploy done" --title "CI"
-
-# Open a URL when the notification is clicked
+# Open claude.ai when the notification is clicked
 ding 5h "quota is back" --open https://claude.ai --subtitle "Anthropic"
 
-# Use the notification banner's built-in sound (separate from the afplay alarm)
+# Background the process, return the prompt immediately
+ding 5h "quota is back" --detach
+
+# Silent notification (no alarm sound)
+ding 30m "check the oven" --no-sound
+
+# macOS Clock alarm ringtone (played locally via afplay; quote names with spaces)
+ding 5h "wake" --sound Daybreak
+ding 5h "wake" --sound "Milky Way"
+
+# Notification banner's own macOS sound (separate from the afplay alarm)
 ding 30m "stand-up" --notify-sound Glass
 
-# Detach — return the prompt immediately, fires in background
-ding 5h "quota is back" --detach
-ding 9am "morning check" -d
+# Custom audio file
+ding 20m "deploy done" --sound ~/Downloads/alert.aiff
+
+# Use emoji icons (no Nerd Font required)
+ding 5m "test" --icons emoji
+
+# Or set permanently in your shell profile
+export DING_ICONS=emoji
 ```
 
-### Options
+### Interactive wizard
 
-| Flag                    | Alias | Description                                                                     |
-| ----------------------- | ----- | ------------------------------------------------------------------------------- |
-| `--detach`              | `-d`  | Background the process; prints fire time and PID, then exits                    |
-| `--sound <path>`        | `-s`  | Custom audio file played via `afplay` when the alarm fires (default: Glass)     |
-| `--no-sound`            |       | Disable alarm sound entirely                                                    |
-| `--no-notify`           |       | Disable desktop notification                                                    |
-| `--title <text>`        |       | Notification title (default: `ding`)                                            |
-| `--subtitle <text>`     |       | Notification subtitle                                                           |
-| `--icon <path>`         |       | Absolute path to a custom notification icon image                               |
-| `--open <url>`          |       | URL opened when the notification is clicked (e.g. `https://claude.ai`)          |
-| `--notify-sound <name>` |       | Notification banner sound name (e.g. `Glass`, `Ping`) — distinct from `--sound` |
-| `--icons <mode>`        |       | Icon set: `nerd` (default), `emoji`, or `ascii`. Also via `DING_ICONS` env var  |
-| `--help`                | `-h`  | Show help                                                                       |
-| `--version`             | `-V`  | Show version                                                                    |
+Running `ding` with no time argument (or with `-i`) launches a tabbed wizard:
+
+```
+ding  When · Message · Sound · Notify · Mode · Review
+```
+
+Navigate between tabs with `←` / `→`. On the **Sound** step, use `↑` / `↓` to browse presets, macOS Clock ringtones, and system sounds, and press `Space` to preview a sound before confirming with `↵`.
 
 ### Icon sets
 
-The countdown and done line use icons from the active icon set. Three modes are available:
+The countdown display and fired state use glyphs from the active icon set:
 
-| Mode    | How to activate                       | Requires                          |
-| ------- | ------------------------------------- | --------------------------------- |
-| `nerd`  | default (no flag needed)              | a Nerd Font-patched terminal font |
-| `emoji` | `--icons emoji` or `DING_ICONS=emoji` | any modern terminal               |
-| `ascii` | `--icons ascii` or `DING_ICONS=ascii` | nothing                           |
+| Mode    | Activate                              | Requires                                                       |
+| ------- | ------------------------------------- | -------------------------------------------------------------- |
+| `nerd`  | default                               | a [Nerd Font](https://www.nerdfonts.com)-patched terminal font |
+| `emoji` | `--icons emoji` or `DING_ICONS=emoji` | any modern terminal                                            |
+| `ascii` | `--icons ascii` or `DING_ICONS=ascii` | nothing                                                        |
 
-`--icons` takes precedence over `DING_ICONS`. The default `nerd` mode uses Private Use Area glyphs from the Nerd Fonts patch set (nf-fa-hourglass `U+F254`, nf-fa-check `U+F00C`, nf-fa-chevron-right `U+F054`). If your terminal font is not Nerd Font-patched, use `--icons emoji` or set `DING_ICONS=emoji` in your shell profile.
-
-```sh
-ding 5m "test" --icons emoji
-DING_ICONS=ascii ding 5m "test"
-```
+`--icons` takes precedence over `DING_ICONS`. If your font is not Nerd Font-patched, add `export DING_ICONS=emoji` to your shell profile.
 
 ### Foreground mode (default)
 
-Without `--detach`, the terminal shows a live re-rendering countdown:
+Without `--detach`, the terminal renders a live countdown. When the timer fires it rings continuously until you press any key:
 
-```
-ding fires at 19:45:00 — quota is back
+```console
+$ ding 5m "quota is back"
+ding → 16:42:00 · quota is back
 04:59:58 ▸ quota is back
 ```
 
-Press `Ctrl-C` to cancel cleanly.
-
 ### Detach mode
 
-```sh
+```console
 $ ding 5h "quota is back" --detach
-ding fires at 19:45:00
-detached — pid 12345, args: 5h quota is back
+ding → 21:00:00 (detached)
 $
 ```
 
-The detached process fires the notification and sound at the target time with no terminal required.
+The process runs silently in the background and fires the notification and alarm at the target time — no terminal required.
 
 ---
 
-## Development
+## 🔧 Development
 
-```sh
-npm install
-npm run dev -- 5s "test"   # run from source
-npm run build              # compile to dist/
-npm run typecheck          # TypeScript check
+```
+ding-cli/
+├── src/
+│   ├── index.ts          # CLI entry point and argument definitions
+│   ├── countdown.ts      # Foreground countdown rendering loop
+│   ├── detach.ts         # Background process spawning
+│   ├── icons.ts          # Icon sets (nerd / emoji / ascii)
+│   ├── notify.ts         # Desktop notification wrapper
+│   ├── parse-time.ts     # Relative and absolute time parsing
+│   ├── preview-sound.ts  # Sound preview during wizard
+│   ├── sounds.ts         # Alarm presets (WAV synthesis) + system sound resolution
+│   ├── ui/               # TUI primitives (tabs, footer hints)
+│   └── wizard/           # Interactive wizard (Ink/React)
+└── dist/                 # Compiled output (tsup → ESM)
 ```
 
-After `npm link`, use the `ding` binary directly.
+### Scripts
+
+| Command               | Description                            |
+| --------------------- | -------------------------------------- |
+| `npm run dev`         | Run from TypeScript source via `tsx`   |
+| `npm run build`       | Compile to `dist/` with `tsup`         |
+| `npm run build:watch` | Watch mode compilation                 |
+| `npm run typecheck`   | TypeScript type-check without emitting |
+| `npm run lint`        | ESLint                                 |
+| `npm run format`      | Prettier                               |
+
+### Setup
+
+```sh
+git clone https://github.com/kud/ding-cli.git
+cd ding-cli
+npm install
+npm run dev -- 5s "test alarm"
+```
+
+After `npm link`, the `ding` binary resolves to the compiled `dist/index.js` (run `npm run build` first).
 
 ---
 
-## Licence
+## 🏗 Tech Stack
 
-MIT — Erwann Mest
+| Package                                                      | Role                                                      |
+| ------------------------------------------------------------ | --------------------------------------------------------- |
+| [`ink`](https://github.com/vadimdemedes/ink)                 | React renderer for the terminal                           |
+| [`@inkjs/ui`](https://github.com/vadimdemedes/ink)           | Text input and select components                          |
+| [`citty`](https://github.com/unjs/citty)                     | CLI argument parsing                                      |
+| [`node-notifier`](https://github.com/mikaelbr/node-notifier) | macOS desktop notifications (vendors `terminal-notifier`) |
+| [`chalk`](https://github.com/chalk/chalk)                    | Terminal colour output                                    |
+| [`tsup`](https://github.com/egoist/tsup)                     | ESM build                                                 |
+| [`tsx`](https://github.com/privatenumber/tsx)                | TypeScript execution for development                      |
+
+---
+
+MIT © [kud](https://github.com/kud) — Made with ❤️

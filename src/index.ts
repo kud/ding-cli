@@ -6,7 +6,6 @@ import { spawnDetached } from "./detach.js"
 import { resolveIcons } from "./icons.js"
 import {
   sendNotification,
-  playSound,
   DEFAULT_SOUND,
   type NotifyOptions,
 } from "./notify.js"
@@ -28,29 +27,25 @@ const formatFireTime = (fireAt: Date): string =>
 const formatAsTimeString = (date: Date): string =>
   date.toTimeString().slice(0, 8)
 
-const fire = (opts: {
+const notifyOnFire = (opts: {
   title: string
   message: string
-  sound: string | false
   notify: boolean
   subtitle?: string
   icon?: string
   open?: string
   notifySound?: string
 }): void => {
-  if (opts.notify) {
-    const notifyOpts: NotifyOptions = {
-      title: opts.title,
-      message: opts.message,
-    }
-    if (opts.subtitle !== undefined) notifyOpts.subtitle = opts.subtitle
-    if (opts.icon !== undefined) notifyOpts.icon = opts.icon
-    if (opts.open !== undefined) notifyOpts.open = opts.open
-    if (opts.notifySound !== undefined)
-      notifyOpts.notifySound = opts.notifySound
-    sendNotification(notifyOpts)
+  if (!opts.notify) return
+  const notifyOpts: NotifyOptions = {
+    title: opts.title,
+    message: opts.message,
   }
-  if (opts.sound !== false) playSound(opts.sound || DEFAULT_SOUND)
+  if (opts.subtitle !== undefined) notifyOpts.subtitle = opts.subtitle
+  if (opts.icon !== undefined) notifyOpts.icon = opts.icon
+  if (opts.open !== undefined) notifyOpts.open = opts.open
+  if (opts.notifySound !== undefined) notifyOpts.notifySound = opts.notifySound
+  sendNotification(notifyOpts)
 }
 
 type RunConfig = {
@@ -109,11 +104,8 @@ const run = async (config: RunConfig): Promise<void> => {
     `${chalk.hex("#a3e635")("ding")} → ${chalk.bold(formatFireTime(fireAt))}${message !== DEFAULT_MESSAGE ? chalk.dim(` · ${message}`) : ""}\n`,
   )
 
-  await new Promise<void>((resolve) => {
-    runForegroundCountdown(fireAt, message, icons, () => {
-      fire({ title, message, sound, notify, subtitle, icon, open, notifySound })
-      resolve()
-    })
+  await runForegroundCountdown(fireAt, message, icons, sound, () => {
+    notifyOnFire({ title, message, notify, subtitle, icon, open, notifySound })
   })
 }
 
@@ -152,7 +144,7 @@ const main = defineCommand({
       type: "string",
       alias: "s",
       description:
-        "Path to a custom audio file played via afplay when the alarm fires (default: system Glass sound)",
+        'Alarm sound on fire: a preset (beep, digital, radar, bell, siren, chime), a macOS Clock ringtone name (e.g. Daybreak, Radial, "Milky Way"), a macOS system sound name (e.g. Glass), or a path to an audio file (default: bell)',
     },
     "no-sound": {
       type: "boolean",

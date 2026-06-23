@@ -1,7 +1,8 @@
 import nodeNotifier from "node-notifier"
 import { spawnSync } from "node:child_process"
+import { resolveSound } from "./sounds.js"
 
-export const DEFAULT_SOUND = "/System/Library/Sounds/Glass.aiff"
+export const DEFAULT_SOUND = "bell"
 
 export type NotifyOptions = {
   title: string
@@ -28,8 +29,10 @@ export const sendNotification = (opts: NotifyOptions): void => {
   nodeNotifier.notify(payload)
 }
 
-export const playSound = (soundPath: string = DEFAULT_SOUND): void => {
-  const result = spawnSync("afplay", [soundPath], { stdio: "ignore" })
+export const playSound = (choice: string = DEFAULT_SOUND): void => {
+  const result = spawnSync("afplay", [resolveSound(choice)], {
+    stdio: "ignore",
+  })
   if (result.error) {
     process.stderr.write(
       `warning: could not play sound: ${result.error.message}\n`,

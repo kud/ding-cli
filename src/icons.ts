@@ -5,13 +5,15 @@ export type IconSet = {
   timerFrames: readonly string[]
   done: string
   pointer: string
+  bell: string
 }
 
 const NERD: IconSet = {
-  timer: "",
-  timerFrames: ["", "", ""],
-  done: "",
-  pointer: "",
+  timer: "\uf017",
+  timerFrames: ["\uf017", "\uf251", "\uf252"],
+  done: "\uf00c",
+  pointer: "\uf054",
+  bell: "\uf0f3",
 }
 
 const EMOJI: IconSet = {
@@ -19,6 +21,7 @@ const EMOJI: IconSet = {
   timerFrames: ["⏳", "⌛"],
   done: "✓",
   pointer: "▸",
+  bell: "🔔",
 }
 
 const ASCII: IconSet = {
@@ -26,6 +29,7 @@ const ASCII: IconSet = {
   timerFrames: ["|", "/", "-", "\\"],
   done: "[x]",
   pointer: ">",
+  bell: "(!)",
 }
 
 const ICON_SETS: Record<IconMode, IconSet> = {
