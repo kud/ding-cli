@@ -1,6 +1,6 @@
 {
   "name": "@kud/ding-cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "A tiny macOS alarm/timer CLI — set a relative or absolute time, get a notification and a sound when it fires",
   "license": "MIT",
