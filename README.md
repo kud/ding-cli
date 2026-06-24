@@ -127,6 +127,21 @@ ding 5m "test" --icons emoji
 export DING_ICONS=emoji
 ```
 
+### Recipe: ring when Claude's usage quota resets
+
+`ding` was born to time Claude's 5-hour usage window — but instead of guessing
+`5h`, read the _exact_ reset time from [ccusage](https://github.com/ryoppippi/ccusage),
+which parses Claude Code's local logs. Pipe its active-block `remainingMinutes`
+straight into `ding`:
+
+```sh
+mins=$(ccusage blocks --active --json --offline | node -e 'const {blocks=[]}=JSON.parse(require("node:fs").readFileSync(0));const a=blocks.find(b=>b.isActive);process.stdout.write(String(a?.projection?.remainingMinutes??""))')
+[ -n "$mins" ] && ding "${mins}m" "Claude quota is back 🎉"
+```
+
+`--offline` keeps it fast (no network), and `remainingMinutes` is already
+relative, so there is no timezone maths to get wrong.
+
 ### Interactive wizard
 
 Running `ding` with no time argument (or with `-i`) launches a tabbed wizard:
