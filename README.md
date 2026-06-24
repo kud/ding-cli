@@ -31,13 +31,13 @@ Originally built to remember when Claude's usage quota resets — `ding 5h "quot
 Install globally:
 
 ```sh
-npm install -g @kud/ding
+npm install -g @kud/ding-cli
 ```
 
 Or run without installing:
 
 ```sh
-npx @kud/ding 5h "quota is back"
+npx @kud/ding-cli 5h "quota is back"
 ```
 
 Set a timer and watch the countdown:
