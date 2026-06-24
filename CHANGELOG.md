@@ -10,6 +10,10 @@ All notable changes to this project are documented here.
 
 - The package is now published as `@kud/ding-cli` on npm, making the install path consistent with the binary name. ([e98b3d2](https://github.com/kud/ding-cli/commit/e98b3d21bdc2171b41e594c15dbb09873e36d6c5))
 
+### Fixes
+
+- Long-running countdowns (multi-hour timers) no longer trigger a Node.js `MaxListenersExceededWarning` memory-leak warning. The dev build of `react-reconciler` was emitting `performance.measure()` on every reconciler commit (~10×/s), accumulating over 1,000,000 User Timing entries during extended sessions. A new `src/bin.ts` entrypoint pins `NODE_ENV=production` before the module graph loads, ensuring the reconciler always picks its production build and those entries are never emitted. ([c406511](https://github.com/kud/ding-cli/commit/c4065116d66d559df87d49b73f57825b366d1790))
+
 ### Documentation
 
 - Added a recipe showing how to use `ding` with `ccusage` to ring when Claude's usage quota resets — includes timezone-safe relative time derived from local logs. ([9ab8d46](https://github.com/kud/ding-cli/commit/9ab8d461f703ad976dbd8058e76285f0b32b5935))
