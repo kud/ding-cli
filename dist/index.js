@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 // src/index.ts
 import chalk4 from "chalk";
 import { defineCommand, runMain } from "citty";

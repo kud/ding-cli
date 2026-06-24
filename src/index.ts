@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import chalk from "chalk"
 import { defineCommand, runMain } from "citty"
 import { runForegroundCountdown } from "./countdown.js"

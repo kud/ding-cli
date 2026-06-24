@@ -18,15 +18,15 @@
     "cli"
   ],
   "bin": {
-    "ding": "dist/index.js"
+    "ding": "dist/bin.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsup src/index.ts --format esm --dts",
-    "build:watch": "tsup src/index.ts --format esm --dts --watch",
+    "build": "tsup src/bin.ts src/index.ts --format esm --dts",
+    "build:watch": "tsup src/bin.ts src/index.ts --format esm --dts --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
