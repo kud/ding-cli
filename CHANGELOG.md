@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ---
 
+## 1.0.2 — 2026-07-04
+
+### Fixes
+
+- The foreground countdown now keeps the active state as `waiting` instead of repeating the eventual notification text as though the alarm had already fired. The initial preview still shows the fire time and message, while the live view focuses on progress and remaining time. ([aa5477b](https://github.com/kud/ding-cli/commit/aa5477bfc686f6b09187b28b00ed78efd208fc33))
+
+---
+
 ## Unreleased — 2026-06-24
 
 ### Highlights
