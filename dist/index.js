@@ -377,11 +377,6 @@ var buildSmoothBar = (elapsed, total) => {
     empty: " ".repeat(BAR_WIDTH - emptyStart)
   };
 };
-var formatFireTime = (date) => date.toLocaleTimeString([], {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit"
-});
 var CountdownView = ({
   fireAt,
   totalMs,
@@ -435,8 +430,6 @@ var CountdownView = ({
     },
     { isActive: rawMode }
   );
-  const showLabel = label !== DEFAULT_MESSAGE;
-  const title = showLabel ? label : "ding";
   if (phase === "ringing" || phase === "done") {
     const isRinging = phase === "ringing";
     return React.createElement(
@@ -450,7 +443,7 @@ var CountdownView = ({
           { color: ACCENT, bold: true },
           `${isRinging ? icons.bell : icons.done} ${isRinging ? "ringing" : "Time's up"}`
         ),
-        showLabel ? React.createElement(Text2, { dimColor: true }, `\xB7 ${label}`) : null
+        label !== DEFAULT_MESSAGE ? React.createElement(Text2, { dimColor: true }, `\xB7 ${label}`) : null
       ),
       isRinging ? React.createElement(FooterHints, {
         hints: [["any key", "dismiss"]]
@@ -464,7 +457,6 @@ var CountdownView = ({
   const timeLabel = formatRemaining(Math.max(0, remainingMs));
   const frameIndex = tickCount % icons.timerFrames.length;
   const spinnerFrame = icons.timerFrames[frameIndex] ?? icons.timer;
-  const fireTimeStr = formatFireTime(fireAt);
   return React.createElement(
     Box2,
     { flexDirection: "column", marginTop: 1, gap: 1 },
@@ -472,7 +464,7 @@ var CountdownView = ({
       Box2,
       { flexDirection: "row", gap: 1 },
       React.createElement(Text2, { dimColor: true }, icons.timer),
-      React.createElement(Text2, { color: ACCENT, bold: true }, title)
+      React.createElement(Text2, { color: ACCENT, bold: true }, "waiting")
     ),
     React.createElement(
       Box2,
@@ -488,8 +480,7 @@ var CountdownView = ({
     React.createElement(
       Box2,
       { flexDirection: "row", gap: 2 },
-      React.createElement(Text2, { bold: true }, timeLabel),
-      React.createElement(Text2, { dimColor: true }, `fires ${fireTimeStr}`)
+      React.createElement(Text2, { bold: true }, timeLabel)
     ),
     React.createElement(FooterHints, { hints: [["ctrl-c", "cancel"]] })
   );
@@ -663,7 +654,7 @@ var STEP_LABELS = {
   mode: "Mode",
   review: "Review"
 };
-var formatFireTime2 = (date) => date.toLocaleTimeString([], {
+var formatFireTime = (date) => date.toLocaleTimeString([], {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit"
@@ -841,7 +832,7 @@ var Wizard = ({ onComplete, onCancel }) => {
             onSubmit: () => whenReady && shiftStep(1)
           }
         ),
-        whenReady && fireAt ? /* @__PURE__ */ jsx2(Text3, { color: ACCENT, children: whenMs !== null ? `in ${formatRemaining(whenMs)}  (from start)` : `\u2192 ${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})` }) : null,
+        whenReady && fireAt ? /* @__PURE__ */ jsx2(Text3, { color: ACCENT, children: whenMs !== null ? `in ${formatRemaining(whenMs)}  (from start)` : `\u2192 ${formatFireTime(fireAt)}  (in ${formatInTime(fireAt)})` }) : null,
         whenError ? /* @__PURE__ */ jsx2(Text3, { color: "red", children: whenError }) : null
       ] });
     if (step === "message")
@@ -913,7 +904,7 @@ var Wizard = ({ onComplete, onCancel }) => {
     const rows = [
       [
         "When",
-        whenReady && fireAt ? whenMs !== null ? `in ${formatRemaining(whenMs)}` : `${formatFireTime2(fireAt)}  (in ${formatInTime(fireAt)})` : "not set"
+        whenReady && fireAt ? whenMs !== null ? `in ${formatRemaining(whenMs)}` : `${formatFireTime(fireAt)}  (in ${formatInTime(fireAt)})` : "not set"
       ],
       ["Message", message || "(none)"],
       ["Notify", notify ? "yes" : "no"],
@@ -1002,7 +993,7 @@ var runWizard = () => {
 var DEFAULT_TITLE = "ding";
 var DEFAULT_MESSAGE2 = "\u23F0 Time's up";
 var URL_PATTERN = /^https?:\/\/.+/;
-var formatFireTime3 = (fireAt) => fireAt.toLocaleTimeString([], {
+var formatFireTime2 = (fireAt) => fireAt.toLocaleTimeString([], {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit"
@@ -1050,13 +1041,13 @@ var run = async (config) => {
       forwardArgs.push("--notify-sound", notifySound);
     if (iconsFlag !== void 0) forwardArgs.push("--icons", iconsFlag);
     process.stdout.write(
-      `${chalk4.hex("#a3e635")("ding")} \u2192 ${chalk4.bold(formatFireTime3(fireAt))}${chalk4.dim(" (detached)\n")}`
+      `${chalk4.hex("#a3e635")("ding")} \u2192 ${chalk4.bold(formatFireTime2(fireAt))}${chalk4.dim(" (detached)\n")}`
     );
     spawnDetached(forwardArgs);
     return;
   }
   process.stdout.write(
-    `${chalk4.hex("#a3e635")("ding")} \u2192 ${chalk4.bold(formatFireTime3(fireAt))}${message !== DEFAULT_MESSAGE2 ? chalk4.dim(` \xB7 ${message}`) : ""}
+    `${chalk4.hex("#a3e635")("ding")} \u2192 ${chalk4.bold(formatFireTime2(fireAt))}${message !== DEFAULT_MESSAGE2 ? chalk4.dim(` \xB7 ${message}`) : ""}
 `
   );
   await runForegroundCountdown(fireAt, message, icons, sound, () => {
