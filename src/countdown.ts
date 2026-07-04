@@ -107,9 +107,6 @@ const CountdownView: React.FC<CountdownViewProps> = ({
     { isActive: rawMode },
   )
 
-  const showLabel = label !== DEFAULT_MESSAGE
-  const title = showLabel ? label : "ding"
-
   if (phase === "ringing" || phase === "done") {
     const isRinging = phase === "ringing"
     return React.createElement(
@@ -125,7 +122,7 @@ const CountdownView: React.FC<CountdownViewProps> = ({
             isRinging ? "ringing" : "Time's up"
           }`,
         ),
-        showLabel
+        label !== DEFAULT_MESSAGE
           ? React.createElement(Text, { dimColor: true }, `· ${label}`)
           : null,
       ),
@@ -144,7 +141,6 @@ const CountdownView: React.FC<CountdownViewProps> = ({
   const timeLabel = formatRemaining(Math.max(0, remainingMs))
   const frameIndex = tickCount % icons.timerFrames.length
   const spinnerFrame = icons.timerFrames[frameIndex] ?? icons.timer
-  const fireTimeStr = formatFireTime(fireAt)
 
   return React.createElement(
     Box,
@@ -153,7 +149,7 @@ const CountdownView: React.FC<CountdownViewProps> = ({
       Box,
       { flexDirection: "row", gap: 1 },
       React.createElement(Text, { dimColor: true }, icons.timer),
-      React.createElement(Text, { color: ACCENT, bold: true }, title),
+      React.createElement(Text, { color: ACCENT, bold: true }, "waiting"),
     ),
     React.createElement(
       Box,
@@ -170,7 +166,6 @@ const CountdownView: React.FC<CountdownViewProps> = ({
       Box,
       { flexDirection: "row", gap: 2 },
       React.createElement(Text, { bold: true }, timeLabel),
-      React.createElement(Text, { dimColor: true }, `fires ${fireTimeStr}`),
     ),
     React.createElement(FooterHints, { hints: [["ctrl-c", "cancel"]] }),
   )
