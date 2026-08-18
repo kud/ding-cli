@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## 1.1.0 — 2026-08-18
+
+### Highlights
+
+- Ding can now run a shell command when the timer fires, with `--exec <command>` — piped through `/bin/sh -c` with ding's own environment, so `PATH` and friends survive whether it runs in the foreground or under `--detach`. Output is appended to `~/Library/Logs/ding/exec.log` (rotated at 1MB, overridable via `DING_EXEC_LOG`), and shell operators like `&&` and pipes work as expected. A non-zero exit plays a distinct alarm (`--exec-fail-sound`, default `siren`, honouring `--no-sound`), sends a failure notification, prints the last 20 lines of output to stderr, and becomes ding's own exit code — so a failed command can't slip past unnoticed. Note that `--exec` doesn't imply `--detach`. ([3de1ece](https://github.com/kud/ding-cli/commit/3de1eceb2c7bce1503a8843509e197edd2a574eb))
+
+### Fixes
+
+- `--no-notify` silently did nothing. citty parses `--no-x` as a negation of `x`, so it correctly flipped the internal `notify` flag, but the code was reading the separately-declared `no-notify` arg instead, which stayed at its default. `--no-sound` happened to work only by luck, via a fallback path. Both flags are now honoured — if you were relying on `--no-notify` to suppress the banner, it was showing up anyway. ([3de1ece](https://github.com/kud/ding-cli/commit/3de1eceb2c7bce1503a8843509e197edd2a574eb))
+
+### Internal
+
+- Rebuilt and committed the published `dist/` bundle to include the exec changes. ([1e1bf1d](https://github.com/kud/ding-cli/commit/1e1bf1d79120722d455405eac43af26fea01e461))
+
+---
+
 ## 1.0.2 — 2026-07-04
 
 ### Fixes
