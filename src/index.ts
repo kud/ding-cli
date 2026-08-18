@@ -2,6 +2,14 @@ import chalk from "chalk"
 import { defineCommand, runMain } from "citty"
 import { runForegroundCountdown } from "./countdown.js"
 import { spawnDetached } from "./detach.js"
+import {
+  DEFAULT_FAIL_SOUND,
+  execLogPath,
+  formatOutcome,
+  runExec,
+  tailLines,
+  type ExecOutcome,
+} from "./exec.js"
 import { resolveIcons } from "./icons.js"
 import {
   sendNotification,
@@ -9,12 +17,28 @@ import {
   type NotifyOptions,
 } from "./notify.js"
 import { parseTime } from "./parse-time.js"
+import { ringOnce } from "./ringer.js"
 import { runWizard } from "./wizard/wizard.js"
 
 const DEFAULT_TITLE = "ding"
 const DEFAULT_MESSAGE = "⏰ Time's up"
 
 const URL_PATTERN = /^https?:\/\/.+/
+
+// citty parses `--no-x` as a negation of `x`, so it sets `notify: false` and
+// leaves the declared `"no-notify"` arg at its default — the declared arg is
+// never the one that carries the user's intent. Reading only the declared name
+// is why `--no-notify` silently did nothing; `--no-sound` appeared to work
+// solely because `sound: false` survived the `?? DEFAULT_SOUND` fallback.
+// Both spellings are honoured here so the declared flags stay in --help.
+const isDisabled = (args: Record<string, unknown>, flag: string): boolean =>
+  args[`no-${flag}`] === true || args[flag] === false
+
+const stringArg = (
+  args: Record<string, unknown>,
+  flag: string,
+): string | undefined =>
+  typeof args[flag] === "string" ? (args[flag] as string) : undefined
 
 const formatFireTime = (fireAt: Date): string =>
   fireAt.toLocaleTimeString([], {
@@ -60,6 +84,44 @@ type RunConfig = {
   open?: string
   notifySound?: string
   iconsFlag?: string
+  exec?: string
+  execFailSound: string
+}
+
+const FAILURE_TAIL_LINES = 20
+
+const reportExec = (
+  outcome: ExecOutcome,
+  opts: { notify: boolean; sound: string | false; failSound: string },
+): void => {
+  const label = formatOutcome(outcome)
+
+  if (outcome.code === 0 && outcome.signal === null) {
+    process.stdout.write(
+      `${chalk.hex("#a3e635")("ding")} → ${chalk.bold("exec ok")}${chalk.dim(` · ${label} · ${outcome.logPath}`)}\n`,
+    )
+    return
+  }
+
+  process.exitCode = outcome.code
+
+  // ringOnce rather than playSound: playSound is spawnSync, so it would hold
+  // the siren's whole duration before the banner and the stderr line appear.
+  // The non-zero exit is exactly the case where that delay is felt, which is
+  // the same ordering trap the blocking ring had one layer up.
+  if (opts.sound !== false) ringOnce(opts.failSound)
+  if (opts.notify)
+    sendNotification({
+      title: "ding — command failed",
+      message: `${label} · ${outcome.command}`,
+      subtitle: outcome.logPath,
+    })
+
+  process.stderr.write(
+    `${chalk.red("ding")} → ${chalk.bold("exec failed")}${chalk.dim(` · ${label} · ${outcome.logPath}`)}\n`,
+  )
+  const tail = tailLines(outcome.output, FAILURE_TAIL_LINES)
+  if (tail.length > 0) process.stderr.write(`${chalk.dim(tail)}\n`)
 }
 
 const run = async (config: RunConfig): Promise<void> => {
@@ -76,6 +138,8 @@ const run = async (config: RunConfig): Promise<void> => {
     open,
     notifySound,
     iconsFlag,
+    exec,
+    execFailSound,
   } = config
   const icons = resolveIcons(iconsFlag)
 
@@ -92,9 +156,14 @@ const run = async (config: RunConfig): Promise<void> => {
     if (notifySound !== undefined)
       forwardArgs.push("--notify-sound", notifySound)
     if (iconsFlag !== undefined) forwardArgs.push("--icons", iconsFlag)
+    if (exec !== undefined) forwardArgs.push("--exec", exec)
+    if (execFailSound !== DEFAULT_FAIL_SOUND)
+      forwardArgs.push("--exec-fail-sound", execFailSound)
     process.stdout.write(
       `${chalk.hex("#a3e635")("ding")} → ${chalk.bold(formatFireTime(fireAt))}${chalk.dim(" (detached)\n")}`,
     )
+    if (exec !== undefined)
+      process.stdout.write(chalk.dim(`exec output → ${execLogPath()}\n`))
     spawnDetached(forwardArgs)
     return
   }
@@ -103,9 +172,39 @@ const run = async (config: RunConfig): Promise<void> => {
     `${chalk.hex("#a3e635")("ding")} → ${chalk.bold(formatFireTime(fireAt))}${message !== DEFAULT_MESSAGE ? chalk.dim(` · ${message}`) : ""}\n`,
   )
 
-  await runForegroundCountdown(fireAt, message, icons, sound, () => {
-    notifyOnFire({ title, message, notify, subtitle, icon, open, notifySound })
-  })
+  // The command starts inside onFire and is awaited only once the countdown
+  // view has exited. Awaiting it there instead would stall the render loop —
+  // and in a TTY the alarm keeps ringing until a key is pressed, so the
+  // command would not start until a human turned up, which is the one thing
+  // --exec exists to avoid.
+  const pending: { exec?: Promise<ExecOutcome> } = {}
+
+  await runForegroundCountdown(
+    fireAt,
+    message,
+    icons,
+    sound,
+    () => {
+      notifyOnFire({
+        title,
+        message,
+        notify,
+        subtitle,
+        icon,
+        open,
+        notifySound,
+      })
+      if (exec !== undefined) pending.exec = runExec(exec)
+    },
+    exec !== undefined,
+  )
+
+  if (pending.exec !== undefined)
+    reportExec(await pending.exec, {
+      notify,
+      sound,
+      failSound: execFailSound,
+    })
 }
 
 const main = defineCommand({
@@ -182,12 +281,24 @@ const main = defineCommand({
       description:
         'Icon set: "nerd" (default, requires Nerd Font), "emoji", or "ascii". Overrides DING_ICONS env var.',
     },
+    exec: {
+      type: "string",
+      description:
+        "Shell command to run when the timer fires, via /bin/sh -c, inheriting ding's environment. Output is appended to ~/Library/Logs/ding/exec.log (override with DING_EXEC_LOG); a non-zero exit plays --exec-fail-sound, sends a failure notification, and makes ding exit with the same status. Does not imply --detach.",
+    },
+    "exec-fail-sound": {
+      type: "string",
+      description: `Sound played when --exec exits non-zero (default: ${DEFAULT_FAIL_SOUND}). Takes the same values as --sound; silenced by --no-sound.`,
+    },
   },
   run: async ({ args }) => {
     const rawTime = args.time as string | undefined
     const isInteractive = (args.interactive as boolean) || !rawTime
-    const iconsFlag = args.icons as string | undefined
-    const openUrl = args.open as string | undefined
+    const iconsFlag = stringArg(args, "icons")
+    const openUrl = stringArg(args, "open")
+    const exec = stringArg(args, "exec")
+    const execFailSound =
+      stringArg(args, "exec-fail-sound") ?? DEFAULT_FAIL_SOUND
 
     if (openUrl !== undefined && !URL_PATTERN.test(openUrl)) {
       process.stderr.write(
@@ -207,19 +318,21 @@ const main = defineCommand({
         notify: wizardConfig.notify,
         detach: wizardConfig.detach,
         iconsFlag,
+        exec,
+        execFailSound,
       })
       return
     }
 
-    const message = (args.message as string | undefined) ?? DEFAULT_MESSAGE
-    const title = (args.title as string | undefined) ?? DEFAULT_TITLE
+    const message = stringArg(args, "message") ?? DEFAULT_MESSAGE
+    const title = stringArg(args, "title") ?? DEFAULT_TITLE
     const detach = args.detach as boolean
-    const noSound = args["no-sound"] as boolean
-    const noNotify = args["no-notify"] as boolean
-    const customSound = args.sound as string | undefined
-    const subtitle = args.subtitle as string | undefined
-    const icon = args.icon as string | undefined
-    const notifySound = args["notify-sound"] as string | undefined
+    const noSound = isDisabled(args, "sound")
+    const noNotify = isDisabled(args, "notify")
+    const customSound = stringArg(args, "sound")
+    const subtitle = stringArg(args, "subtitle")
+    const icon = stringArg(args, "icon")
+    const notifySound = stringArg(args, "notify-sound")
 
     const soundPath: string | false = noSound
       ? false
@@ -251,6 +364,8 @@ const main = defineCommand({
       open: openUrl,
       notifySound,
       iconsFlag,
+      exec,
+      execFailSound,
     })
   },
 })

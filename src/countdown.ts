@@ -3,7 +3,7 @@ import { render, Box, Text, useInput, useApp, useStdin } from "ink"
 import chalk from "chalk"
 import { formatRemaining } from "./parse-time.js"
 import type { IconSet } from "./icons.js"
-import { startRingLoop, stopRingLoop, ringTimes } from "./ringer.js"
+import { startRingLoop, stopRingLoop, ringTimes, ringOnce } from "./ringer.js"
 import { ACCENT, FooterHints, type Hint } from "./ui/tui.js"
 
 const BAR_WIDTH = 24
@@ -47,6 +47,7 @@ type CountdownViewProps = {
   label: string
   icons: IconSet
   sound: string | false
+  nonBlockingRing: boolean
   onFire: () => void
 }
 
@@ -56,6 +57,7 @@ const CountdownView: React.FC<CountdownViewProps> = ({
   label,
   icons,
   sound,
+  nonBlockingRing,
   onFire,
 }) => {
   const { exit } = useApp()
@@ -80,13 +82,16 @@ const CountdownView: React.FC<CountdownViewProps> = ({
           startRingLoop(sound)
           setPhase("ringing")
         } else {
-          if (sound !== false) ringTimes(sound, 3)
+          if (sound !== false) {
+            if (nonBlockingRing) ringOnce(sound)
+            else ringTimes(sound, 3)
+          }
           setPhase("done")
         }
       }
     }, TICK_MS)
     return () => clearInterval(interval)
-  }, [fireAt, phase, sound, rawMode, onFire])
+  }, [fireAt, phase, sound, rawMode, nonBlockingRing, onFire])
 
   useEffect(() => {
     if (phase === "done") exit()
@@ -177,6 +182,7 @@ export const runForegroundCountdown = (
   icons: IconSet,
   sound: string | false,
   onFire: () => void,
+  nonBlockingRing = false,
 ): Promise<void> => {
   const totalMs = fireAt.getTime() - Date.now()
 
@@ -196,6 +202,7 @@ export const runForegroundCountdown = (
         label,
         icons,
         sound,
+        nonBlockingRing,
         onFire,
       }),
       { exitOnCtrlC: false },

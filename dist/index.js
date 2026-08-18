@@ -321,6 +321,9 @@ var stopRingLoop = () => {
     loopChild = null;
   }
 };
+var ringOnce = (choice) => {
+  spawn("afplay", [resolveSound(choice)], { stdio: "ignore" }).unref();
+};
 var ringTimes = (choice, count) => {
   const path = resolveSound(choice);
   for (let i = 0; i < count; i++) {
@@ -383,6 +386,7 @@ var CountdownView = ({
   label,
   icons,
   sound,
+  nonBlockingRing,
   onFire
 }) => {
   const { exit } = useApp();
@@ -406,13 +410,16 @@ var CountdownView = ({
           startRingLoop(sound);
           setPhase("ringing");
         } else {
-          if (sound !== false) ringTimes(sound, 3);
+          if (sound !== false) {
+            if (nonBlockingRing) ringOnce(sound);
+            else ringTimes(sound, 3);
+          }
           setPhase("done");
         }
       }
     }, TICK_MS);
     return () => clearInterval(interval);
-  }, [fireAt, phase, sound, rawMode, onFire]);
+  }, [fireAt, phase, sound, rawMode, nonBlockingRing, onFire]);
   useEffect(() => {
     if (phase === "done") exit();
   }, [phase, exit]);
@@ -485,7 +492,7 @@ var CountdownView = ({
     React.createElement(FooterHints, { hints: [["ctrl-c", "cancel"]] })
   );
 };
-var runForegroundCountdown = (fireAt, label, icons, sound, onFire) => {
+var runForegroundCountdown = (fireAt, label, icons, sound, onFire, nonBlockingRing = false) => {
   const totalMs = fireAt.getTime() - Date.now();
   if (!process.stdin.isTTY) {
     process.on("SIGINT", () => {
@@ -502,6 +509,7 @@ var runForegroundCountdown = (fireAt, label, icons, sound, onFire) => {
         label,
         icons,
         sound,
+        nonBlockingRing,
         onFire
       }),
       { exitOnCtrlC: false }
@@ -524,6 +532,97 @@ var spawnDetached = (args) => {
 `)
   );
 };
+
+// src/exec.ts
+import { spawn as spawn3 } from "child_process";
+import { appendFileSync, mkdirSync as mkdirSync2, renameSync, statSync as statSync2 } from "fs";
+import { homedir } from "os";
+import { dirname, join as join2 } from "path";
+var MAX_LOG_BYTES = 1024 * 1024;
+var MAX_CAPTURED_BYTES = 1024 * 1024;
+var DEFAULT_FAIL_SOUND = "siren";
+var execLogPath = () => process.env.DING_EXEC_LOG ?? join2(homedir(), "Library", "Logs", "ding", "exec.log");
+var pad = (n) => String(n).padStart(2, "0");
+var localStamp = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+var formatDuration = (ms) => ms < 1e3 ? `${ms}ms` : `${(ms / 1e3).toFixed(1)}s`;
+var rotateIfLarge = (logPath) => {
+  try {
+    if (statSync2(logPath).size > MAX_LOG_BYTES)
+      renameSync(logPath, `${logPath}.1`);
+  } catch {
+  }
+};
+var appendBlock = (logPath, block) => {
+  try {
+    mkdirSync2(dirname(logPath), { recursive: true });
+    rotateIfLarge(logPath);
+    appendFileSync(logPath, block);
+  } catch (err) {
+    process.stderr.write(
+      `warning: could not write exec log at ${logPath}: ${err instanceof Error ? err.message : String(err)}
+`
+    );
+  }
+};
+var buildBlock = (outcome, startedAt) => {
+  const status = outcome.signal !== null ? `killed by ${outcome.signal}` : `exit ${outcome.code}`;
+  const body = outcome.output.endsWith("\n") ? outcome.output : `${outcome.output}
+`;
+  return [
+    `\u2500\u2500\u2500 ${localStamp(startedAt)} \u2500\u2500\u2500`,
+    `$ ${outcome.command}`,
+    outcome.output.length > 0 ? body : "(no output)\n",
+    outcome.truncated ? "\u2026 output truncated \u2500\u2500\u2500\n" : "",
+    `\u2500\u2500\u2500 ${status} \xB7 ${formatDuration(outcome.durationMs)} \u2500\u2500\u2500`,
+    "",
+    ""
+  ].join("\n");
+};
+var tailLines = (output, count) => output.trimEnd().split("\n").slice(-count).join("\n");
+var formatOutcome = (outcome) => `${outcome.signal !== null ? `killed by ${outcome.signal}` : `exit ${outcome.code}`} \xB7 ${formatDuration(outcome.durationMs)}`;
+var runExec = (command) => new Promise((resolve) => {
+  const logPath = execLogPath();
+  const startedAt = /* @__PURE__ */ new Date();
+  const startedMs = Date.now();
+  const chunks = [];
+  let capturedBytes = 0;
+  let truncated = false;
+  const capture = (chunk) => {
+    if (capturedBytes >= MAX_CAPTURED_BYTES) {
+      truncated = true;
+      return;
+    }
+    capturedBytes += chunk.length;
+    chunks.push(chunk.toString("utf8"));
+  };
+  const child = spawn3("/bin/sh", ["-c", command], {
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  child.stdout.on("data", capture);
+  child.stderr.on("data", capture);
+  const finish = (code, signal) => {
+    const outcome = {
+      command,
+      code,
+      signal,
+      durationMs: Date.now() - startedMs,
+      output: chunks.join(""),
+      truncated,
+      logPath
+    };
+    appendBlock(logPath, buildBlock(outcome, startedAt));
+    resolve(outcome);
+  };
+  child.on("error", (err) => {
+    chunks.push(`ding: could not run command: ${err.message}
+`);
+    finish(127, null);
+  });
+  child.on("close", (code, signal) => {
+    if (signal !== null) finish(128, signal);
+    else finish(code ?? 0, null);
+  });
+});
 
 // src/icons.ts
 var NERD = {
@@ -606,7 +705,7 @@ import chalk3 from "chalk";
 import { readdir } from "fs/promises";
 
 // src/preview-sound.ts
-import { spawn as spawn3 } from "child_process";
+import { spawn as spawn4 } from "child_process";
 var activePreview = null;
 var previewSound = (choice) => {
   if (activePreview !== null) {
@@ -616,7 +715,7 @@ var previewSound = (choice) => {
     }
     activePreview = null;
   }
-  const child = spawn3("afplay", [resolveSound(choice)], {
+  const child = spawn4("afplay", [resolveSound(choice)], {
     stdio: "ignore"
   });
   activePreview = child;
@@ -993,6 +1092,8 @@ var runWizard = () => {
 var DEFAULT_TITLE = "ding";
 var DEFAULT_MESSAGE2 = "\u23F0 Time's up";
 var URL_PATTERN = /^https?:\/\/.+/;
+var isDisabled = (args, flag) => args[`no-${flag}`] === true || args[flag] === false;
+var stringArg = (args, flag) => typeof args[flag] === "string" ? args[flag] : void 0;
 var formatFireTime2 = (fireAt) => fireAt.toLocaleTimeString([], {
   hour: "2-digit",
   minute: "2-digit",
@@ -1011,6 +1112,32 @@ var notifyOnFire = (opts) => {
   if (opts.notifySound !== void 0) notifyOpts.notifySound = opts.notifySound;
   sendNotification(notifyOpts);
 };
+var FAILURE_TAIL_LINES = 20;
+var reportExec = (outcome, opts) => {
+  const label = formatOutcome(outcome);
+  if (outcome.code === 0 && outcome.signal === null) {
+    process.stdout.write(
+      `${chalk4.hex("#a3e635")("ding")} \u2192 ${chalk4.bold("exec ok")}${chalk4.dim(` \xB7 ${label} \xB7 ${outcome.logPath}`)}
+`
+    );
+    return;
+  }
+  process.exitCode = outcome.code;
+  if (opts.sound !== false) ringOnce(opts.failSound);
+  if (opts.notify)
+    sendNotification({
+      title: "ding \u2014 command failed",
+      message: `${label} \xB7 ${outcome.command}`,
+      subtitle: outcome.logPath
+    });
+  process.stderr.write(
+    `${chalk4.red("ding")} \u2192 ${chalk4.bold("exec failed")}${chalk4.dim(` \xB7 ${label} \xB7 ${outcome.logPath}`)}
+`
+  );
+  const tail = tailLines(outcome.output, FAILURE_TAIL_LINES);
+  if (tail.length > 0) process.stderr.write(`${chalk4.dim(tail)}
+`);
+};
 var run = async (config) => {
   const {
     rawTime,
@@ -1024,7 +1151,9 @@ var run = async (config) => {
     icon,
     open,
     notifySound,
-    iconsFlag
+    iconsFlag,
+    exec,
+    execFailSound
   } = config;
   const icons = resolveIcons(iconsFlag);
   if (detach) {
@@ -1040,9 +1169,15 @@ var run = async (config) => {
     if (notifySound !== void 0)
       forwardArgs.push("--notify-sound", notifySound);
     if (iconsFlag !== void 0) forwardArgs.push("--icons", iconsFlag);
+    if (exec !== void 0) forwardArgs.push("--exec", exec);
+    if (execFailSound !== DEFAULT_FAIL_SOUND)
+      forwardArgs.push("--exec-fail-sound", execFailSound);
     process.stdout.write(
       `${chalk4.hex("#a3e635")("ding")} \u2192 ${chalk4.bold(formatFireTime2(fireAt))}${chalk4.dim(" (detached)\n")}`
     );
+    if (exec !== void 0)
+      process.stdout.write(chalk4.dim(`exec output \u2192 ${execLogPath()}
+`));
     spawnDetached(forwardArgs);
     return;
   }
@@ -1050,9 +1185,32 @@ var run = async (config) => {
     `${chalk4.hex("#a3e635")("ding")} \u2192 ${chalk4.bold(formatFireTime2(fireAt))}${message !== DEFAULT_MESSAGE2 ? chalk4.dim(` \xB7 ${message}`) : ""}
 `
   );
-  await runForegroundCountdown(fireAt, message, icons, sound, () => {
-    notifyOnFire({ title, message, notify, subtitle, icon, open, notifySound });
-  });
+  const pending = {};
+  await runForegroundCountdown(
+    fireAt,
+    message,
+    icons,
+    sound,
+    () => {
+      notifyOnFire({
+        title,
+        message,
+        notify,
+        subtitle,
+        icon,
+        open,
+        notifySound
+      });
+      if (exec !== void 0) pending.exec = runExec(exec);
+    },
+    exec !== void 0
+  );
+  if (pending.exec !== void 0)
+    reportExec(await pending.exec, {
+      notify,
+      sound,
+      failSound: execFailSound
+    });
 };
 var main = defineCommand({
   meta: {
@@ -1121,13 +1279,23 @@ var main = defineCommand({
     icons: {
       type: "string",
       description: 'Icon set: "nerd" (default, requires Nerd Font), "emoji", or "ascii". Overrides DING_ICONS env var.'
+    },
+    exec: {
+      type: "string",
+      description: "Shell command to run when the timer fires, via /bin/sh -c, inheriting ding's environment. Output is appended to ~/Library/Logs/ding/exec.log (override with DING_EXEC_LOG); a non-zero exit plays --exec-fail-sound, sends a failure notification, and makes ding exit with the same status. Does not imply --detach."
+    },
+    "exec-fail-sound": {
+      type: "string",
+      description: `Sound played when --exec exits non-zero (default: ${DEFAULT_FAIL_SOUND}). Takes the same values as --sound; silenced by --no-sound.`
     }
   },
   run: async ({ args }) => {
     const rawTime = args.time;
     const isInteractive = args.interactive || !rawTime;
-    const iconsFlag = args.icons;
-    const openUrl = args.open;
+    const iconsFlag = stringArg(args, "icons");
+    const openUrl = stringArg(args, "open");
+    const exec = stringArg(args, "exec");
+    const execFailSound = stringArg(args, "exec-fail-sound") ?? DEFAULT_FAIL_SOUND;
     if (openUrl !== void 0 && !URL_PATTERN.test(openUrl)) {
       process.stderr.write(
         `error: --open value "${openUrl}" does not look like a URL (must start with http:// or https://)
@@ -1145,19 +1313,21 @@ var main = defineCommand({
         sound: wizardConfig.sound,
         notify: wizardConfig.notify,
         detach: wizardConfig.detach,
-        iconsFlag
+        iconsFlag,
+        exec,
+        execFailSound
       });
       return;
     }
-    const message = args.message ?? DEFAULT_MESSAGE2;
-    const title = args.title ?? DEFAULT_TITLE;
+    const message = stringArg(args, "message") ?? DEFAULT_MESSAGE2;
+    const title = stringArg(args, "title") ?? DEFAULT_TITLE;
     const detach = args.detach;
-    const noSound = args["no-sound"];
-    const noNotify = args["no-notify"];
-    const customSound = args.sound;
-    const subtitle = args.subtitle;
-    const icon = args.icon;
-    const notifySound = args["notify-sound"];
+    const noSound = isDisabled(args, "sound");
+    const noNotify = isDisabled(args, "notify");
+    const customSound = stringArg(args, "sound");
+    const subtitle = stringArg(args, "subtitle");
+    const icon = stringArg(args, "icon");
+    const notifySound = stringArg(args, "notify-sound");
     const soundPath = noSound ? false : customSound ?? DEFAULT_SOUND;
     const parseResult = (() => {
       try {
@@ -1183,7 +1353,9 @@ var main = defineCommand({
       icon,
       open: openUrl,
       notifySound,
-      iconsFlag
+      iconsFlag,
+      exec,
+      execFailSound
     });
   }
 });

@@ -29,6 +29,14 @@ export const stopRingLoop = (): void => {
   }
 }
 
+// ringTimes blocks the event loop for the whole ring. That is harmless when the
+// alarm is the last thing ding does, but with --exec it stalls the command's
+// observed completion — and so the failure sound and banner — behind several
+// seconds of bell. This variant hands the ring to afplay and carries on.
+export const ringOnce = (choice: string): void => {
+  spawn("afplay", [resolveSound(choice)], { stdio: "ignore" }).unref()
+}
+
 export const ringTimes = (choice: string, count: number): void => {
   const path = resolveSound(choice)
   for (let i = 0; i < count; i++) {
