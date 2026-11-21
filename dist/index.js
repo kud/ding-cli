@@ -1270,7 +1270,7 @@ var main = defineCommand({
     },
     open: {
       type: "string",
-      description: "URL to open when the notification is clicked (e.g. https://claude.ai)"
+      description: "URL to open when the notification is clicked (e.g. https://example.com)"
     },
     "notify-sound": {
       type: "string",
