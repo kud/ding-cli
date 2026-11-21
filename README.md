@@ -90,7 +90,7 @@ ding <time> [message] [options]
 | `--icons <mode>`        |       | Icon set: `nerd` (default, requires Nerd Font), `emoji`, or `ascii`. Also set via `DING_ICONS` env var                                                                                                                                     |
 | `--interactive`         | `-i`  | Force-launch the interactive wizard                                                                                                                                                                                                        |
 | `--help`                | `-h`  | Show help                                                                                                                                                                                                                                  |
-| `--version`             | `-v`  | Show version                                                                                                                                                                                                                               |
+| `--version`             | `-v`, `-V` | Show version                                                                                                                                                                                                                               |
 
 ### Examples
 

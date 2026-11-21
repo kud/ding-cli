@@ -1361,4 +1361,7 @@ var main = defineCommand({
     });
   }
 });
-runMain(main);
+var argv = process.argv.slice(2);
+runMain(main, {
+  rawArgs: argv.length === 1 && argv[0] === "-V" ? ["--version"] : argv
+});

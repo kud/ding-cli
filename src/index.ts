@@ -377,4 +377,9 @@ const main = defineCommand({
   },
 })
 
-runMain(main)
+// citty only recognises `--version` and `-v` as built-in version flags; accept
+// the conventional `-V` too rather than letting it fall through to the wizard.
+const argv = process.argv.slice(2)
+runMain(main, {
+  rawArgs: argv.length === 1 && argv[0] === "-V" ? ["--version"] : argv,
+})
