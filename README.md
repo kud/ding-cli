@@ -2,16 +2,16 @@
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white)
-![npm](https://img.shields.io/npm/v/%40kud%2Fding?style=flat-square&color=CB3837)
+![npm](https://img.shields.io/npm/v/%40kud%2Fding-cli?style=flat-square&color=CB3837)
 ![MIT](https://img.shields.io/badge/licence-MIT-22C55E?style=flat-square)
 
 **A tiny macOS alarm/timer CLI — set a relative or absolute time, get a notification and a sound when it fires**
 
-[Features](#-features) • [Quick Start](#-quick-start) • [CLI Reference](#-cli-reference) • [Development](#-development)
+[Features](#-features) • [Quick Start](#-quick-start) • [CLI Reference](#-cli-reference) • [Docs](#-docs) • [Development](#-development)
 
 </div>
 
-Originally built to remember when Claude's usage quota resets — `ding 5h "quota is back"` and forget about it.
+Originally written to flag when a usage quota resets — `ding 5h "quota is back"` and forget about it.
 
 ---
 
@@ -20,8 +20,8 @@ Originally built to remember when Claude's usage quota resets — `ding 5h "quot
 - ⏱ **Relative and absolute times** — `5h`, `90m`, `1h30m`, `30s`, `14:30`, `2:30pm`, `9am`; absolute times already past today roll to tomorrow
 - 🔔 **Desktop notifications** — zero-dependency setup; ships with `node-notifier` which vendors its own `terminal-notifier`, no `brew install` required
 - 🔊 **Built-in alarm presets** — six synthesised sounds (`beep`, `digital`, `radar`, `bell`, `siren`, `chime`), macOS Clock ringtones (e.g. `Radial`, `Daybreak`, `Arpeggio`), macOS system sounds, or any audio file via `afplay`
-- 🧙 **Interactive wizard** — `ding` with no arguments launches a tabbed TUI (When · Message · Sound · Notify · Mode · Review); press Space on the Sound step to preview before choosing
-- 🔗 **Click-to-open notifications** — `--open https://claude.ai` makes the notification banner a shortcut to any URL
+- 🧙 **Interactive wizard** — `ding` with no arguments launches a tabbed TUI (When · Message · Sound · Notify · Mode · Review); press Space on the Sound step to preview before choosing (the wizard sets time, message, sound, notification and mode only)
+- 🔗 **Click-to-open notifications** — `--open https://example.com` makes the notification banner a shortcut to any URL
 - ⚡ **Run a command when it fires** — `--exec 'npm run build'` acts without waiting for a human to notice; output is logged, and a non-zero exit sounds a distinct alarm and becomes `ding`'s own exit status
 - 🖥 **Foreground and detached modes** — live countdown with progress bar by default; `--detach` backgrounds the process and returns the prompt immediately
 
@@ -83,14 +83,14 @@ ding <time> [message] [options]
 | `--title <text>`        |       | Notification title (default: `ding`)                                                                                                                                                                                                       |
 | `--subtitle <text>`     |       | Notification subtitle                                                                                                                                                                                                                      |
 | `--icon <path>`         |       | Absolute path to a custom notification icon image                                                                                                                                                                                          |
-| `--open <url>`          |       | URL to open when the notification banner is clicked                                                                                                                                                                                        |
+| `--open <url>`          |       | URL to open when the notification banner is clicked; must start with `http://` or `https://`                                                                                                                                               |
 | `--notify-sound <name>` |       | Notification banner sound (e.g. `Glass`, `Ping`) — distinct from `--sound`, which plays via `afplay`                                                                                                                                       |
 | `--exec <command>`      |       | Shell command to run when the timer fires, via `/bin/sh -c`, inheriting `ding`'s environment. Output is appended to `~/Library/Logs/ding/exec.log` (override with `DING_EXEC_LOG`). Does not imply `--detach`                              |
-| `--exec-fail-sound <v>` |       | Sound played when `--exec` exits non-zero (default: `siren`). Same values as `--sound`; silenced by `--no-sound`                                                                                                                            |
+| `--exec-fail-sound <v>` |       | Sound played when `--exec` exits non-zero (default: `siren`). Same values as `--sound`; silenced by `--no-sound`                                                                                                                           |
 | `--icons <mode>`        |       | Icon set: `nerd` (default, requires Nerd Font), `emoji`, or `ascii`. Also set via `DING_ICONS` env var                                                                                                                                     |
-| `-i` / `--interactive`  |       | Force-launch the interactive wizard                                                                                                                                                                                                        |
+| `--interactive`         | `-i`  | Force-launch the interactive wizard                                                                                                                                                                                                        |
 | `--help`                | `-h`  | Show help                                                                                                                                                                                                                                  |
-| `--version`             | `-V`  | Show version                                                                                                                                                                                                                               |
+| `--version`             | `-v`  | Show version                                                                                                                                                                                                                               |
 
 ### Examples
 
@@ -104,8 +104,8 @@ ding 14:30 "stand-up"
 # Fires at 9 am — rolls to tomorrow if 9 am has already passed
 ding 9am
 
-# Open claude.ai when the notification is clicked
-ding 5h "quota is back" --open https://claude.ai --subtitle "Anthropic"
+# Open a page when the notification is clicked
+ding 45m "review the draft" --open https://example.com/drafts/42 --subtitle "Writing"
 
 # Background the process, return the prompt immediately
 ding 5h "quota is back" --detach
@@ -136,21 +136,6 @@ ding 5m "test" --icons emoji
 export DING_ICONS=emoji
 ```
 
-### Recipe: ring when Claude's usage quota resets
-
-`ding` was born to time Claude's 5-hour usage window — but instead of guessing
-`5h`, read the _exact_ reset time from [ccusage](https://github.com/ryoppippi/ccusage),
-which parses Claude Code's local logs. Pipe its active-block `remainingMinutes`
-straight into `ding`:
-
-```sh
-mins=$(ccusage blocks --active --json --offline | node -e 'const {blocks=[]}=JSON.parse(require("node:fs").readFileSync(0));const a=blocks.find(b=>b.isActive);process.stdout.write(String(a?.projection?.remainingMinutes??""))')
-[ -n "$mins" ] && ding "${mins}m" "Claude quota is back 🎉"
-```
-
-`--offline` keeps it fast (no network), and `remainingMinutes` is already
-relative, so there is no timezone maths to get wrong.
-
 ### Interactive wizard
 
 Running `ding` with no time argument (or with `-i`) launches a tabbed wizard:
@@ -159,7 +144,9 @@ Running `ding` with no time argument (or with `-i`) launches a tabbed wizard:
 ding  When · Message · Sound · Notify · Mode · Review
 ```
 
-Navigate between tabs with `←` / `→`. On the **Sound** step, use `↑` / `↓` to browse presets, macOS Clock ringtones, and system sounds, and press `Space` to preview a sound before confirming with `↵`.
+Navigate between tabs with `←` / `→` (or `Tab` / `Shift+Tab`). On the **Sound** step, use `↑` / `↓` to browse presets, macOS Clock ringtones, and system sounds, and press `Space` to preview a sound before confirming with `↵`.
+
+The wizard only asks for those answers. `--title`, `--subtitle`, `--icon`, `--open`, `--sound`, `--no-sound`, `--no-notify`, `--notify-sound` and `--detach` are ignored on a wizard run; `--icons`, `--exec` and `--exec-fail-sound` still apply.
 
 ### Icon sets
 
@@ -195,18 +182,31 @@ The process runs silently in the background and fires the notification and alarm
 
 ---
 
+## 📚 Docs
+
+Fuller guides live on the [project page](https://kud.io/projects/ding-cli/docs):
+
+- [Usage](https://kud.io/projects/ding-cli/docs/usage) — time formats, foreground and detached runs, the wizard and icon sets
+- [Sounds and notifications](https://kud.io/projects/ding-cli/docs/alerts) — alarm presets, Clock ringtones, banner options and click-to-open URLs
+- [Running commands](https://kud.io/projects/ding-cli/docs/exec) — `--exec`, its log file, failure handling and worked recipes
+
+---
+
 ## 🔧 Development
 
 ```
 ding-cli/
 ├── src/
-│   ├── index.ts          # CLI entry point and argument definitions
+│   ├── bin.ts            # Executable launcher (sets NODE_ENV, loads index)
+│   ├── index.ts          # CLI definition, argument handling and run flow
 │   ├── countdown.ts      # Foreground countdown rendering loop
 │   ├── detach.ts         # Background process spawning
+│   ├── exec.ts           # --exec runner, logging and outcome formatting
 │   ├── icons.ts          # Icon sets (nerd / emoji / ascii)
 │   ├── notify.ts         # Desktop notification wrapper
 │   ├── parse-time.ts     # Relative and absolute time parsing
 │   ├── preview-sound.ts  # Sound preview during wizard
+│   ├── ringer.ts         # Looping and one-shot alarm playback
 │   ├── sounds.ts         # Alarm presets (WAV synthesis) + system sound resolution
 │   ├── ui/               # TUI primitives (tabs, footer hints)
 │   └── wizard/           # Interactive wizard (Ink/React)
@@ -221,8 +221,6 @@ ding-cli/
 | `npm run build`       | Compile to `dist/` with `tsup`         |
 | `npm run build:watch` | Watch mode compilation                 |
 | `npm run typecheck`   | TypeScript type-check without emitting |
-| `npm run lint`        | ESLint                                 |
-| `npm run format`      | Prettier                               |
 
 ### Setup
 
@@ -233,7 +231,7 @@ npm install
 npm run dev -- 5s "test alarm"
 ```
 
-After `npm link`, the `ding` binary resolves to the compiled `dist/index.js` (run `npm run build` first).
+After `npm link`, the `ding` binary resolves to the compiled `dist/bin.js` (run `npm run build` first).
 
 ---
 
