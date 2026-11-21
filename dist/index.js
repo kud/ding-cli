@@ -1,5 +1,6 @@
 // src/index.ts
 import chalk4 from "chalk";
+import { createRequire } from "module";
 import { defineCommand, runMain } from "citty";
 
 // src/countdown.ts
@@ -1212,10 +1213,11 @@ var run = async (config) => {
       failSound: execFailSound
     });
 };
+var { version } = createRequire(import.meta.url)("../package.json");
 var main = defineCommand({
   meta: {
     name: "ding",
-    version: "0.1.0",
+    version,
     description: "A tiny macOS alarm/timer CLI \u2014 set a relative or absolute time, get a notification and a sound when it fires"
   },
   args: {

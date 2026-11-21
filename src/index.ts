@@ -1,4 +1,5 @@
 import chalk from "chalk"
+import { createRequire } from "node:module"
 import { defineCommand, runMain } from "citty"
 import { runForegroundCountdown } from "./countdown.js"
 import { spawnDetached } from "./detach.js"
@@ -207,10 +208,16 @@ const run = async (config: RunConfig): Promise<void> => {
     })
 }
 
+// Resolved at runtime: `../package.json` sits beside both src/ and dist/, and
+// npm always ships package.json, so the reported version tracks the release.
+const { version } = createRequire(import.meta.url)("../package.json") as {
+  version: string
+}
+
 const main = defineCommand({
   meta: {
     name: "ding",
-    version: "0.1.0",
+    version,
     description:
       "A tiny macOS alarm/timer CLI — set a relative or absolute time, get a notification and a sound when it fires",
   },
