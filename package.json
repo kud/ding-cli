@@ -29,9 +29,7 @@
     "build:watch": "tsup src/bin.ts src/index.ts --format esm --dts --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build",
-    "lint": "eslint .",
-    "format": "prettier --write ."
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@inkjs/ui": "2.0.0",
