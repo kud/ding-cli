@@ -29,6 +29,7 @@
     "build:watch": "tsup src/bin.ts src/index.ts --format esm --dts --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
+    "test": "node --test test/",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
